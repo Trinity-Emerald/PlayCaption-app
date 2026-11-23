@@ -33,7 +33,7 @@ class PrijemService : Service() {
     private var diagnostikaPrvniText = false
 
     private fun zapisDiagnostiku(radek: String) {
-        android.util.Log.i("PlayCaptionDiag", radek)
+        android.util.Log.i("NEXCAPDiag", radek)
         runCatching {
             val f = java.io.File(filesDir, "titulky.log")
             if (f.length() > 300_000) f.writeText("")
@@ -226,7 +226,7 @@ class PrijemService : Service() {
             NotificationChannel(kanal, "Titulky z telefonu", NotificationManager.IMPORTANCE_LOW)
         )
         val n = Notification.Builder(this, kanal)
-            .setContentTitle("PlayCaption – titulky z telefonu")
+            .setContentTitle("NEXCAP – titulky z telefonu")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .build()
         if (Build.VERSION.SDK_INT >= 34) startForeground(4, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
