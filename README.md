@@ -1,4 +1,4 @@
-# PlayCaption
+> **NEXCAP — PetrDevelop edition**: This fork is a modified version of PlayCaption for BlueStacks, including manual PS5 and LG webOS IP selection. Original PlayCaption copyright © 2026 Adam Růžička; modified version by PetrDevelop. Licensed under GNU AGPLv3. This fork is not an official PlayCaption release.\n\n# PlayCaption
 
 © 2026 Adam Růžička. Licence GNU AGPLv3 (viz níže).
 
