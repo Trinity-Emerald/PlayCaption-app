@@ -31,7 +31,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 /**
- * PlayCaption – hlavní obrazovka pro televizi (ovládání šipkami + OK).
+ * NEXCAP – hlavní obrazovka pro televizi (ovládání šipkami + OK).
  * Úvod s logem → výběr jazyka (jen poprvé) → jednoduchá hlavní obrazovka.
  * Stará obrazovka s testovacími tlačítky: VyvojActivity (podržet OK na logu).
  */
@@ -60,8 +60,8 @@ class MainActivity : Activity() {
         /** Stažení aplikace do telefonu / tabletu (QR kód v okně „Přidat Android zařízení“). */
         // prázdné = QR kód se neukáže (doplnit odkaz ke stažení, např. Google Disk)
         const val STAHNOUT_URL = ""
-        const val PODPORA_QR = "SPD*1.0*ACC:CZ0506000000000207980632*CC:CZK*MSG:PlayCaption podpora"
-        /** Odkaz na Facebook skupinu PlayCaption – testování. Prázdné = QR v uvítání se neukáže. */
+        const val PODPORA_QR = ""
+        /** Odkaz na Facebook skupinu NEXCAP – testování. Prázdné = QR v uvítání se neukáže. */
         const val SKUPINA_URL = ""
         const val DOBA_BETA_MS = 9000L
         /** Jazyky, které jdou zatím vybrat (beta pro českou a slovenskou komunitu). */
@@ -505,7 +505,7 @@ class MainActivity : Activity() {
         // telefon: najít televizi a převzít od ní spárování s PS5 (bez přihlašování účtu a PINu z PS5)
         if (telefon && !TvProfily(this).platforma.jenZobrazovac) {
             konzole.addView(tlacitkoZelene(t("prevzitZTv")) { prevzitSparovaniZTv() }.jedenRadek(), odsazeni(top = 12))
-            // nespárovaný telefon a v síti je televize s PlayCaption → přihlašování schovat, ať nikdo neklikne špatně
+            // nespárovaný telefon a v síti je televize s NEXCAP → přihlašování schovat, ať nikdo neklikne špatně
             if (!udaje.sparovano) Propojeni.hledej(this, 2500) { nalez ->
                 ui.post {
                     // jen spárovaná televize umí telefonu předat spárování; nespárovaná jen ukazuje titulky
@@ -1187,7 +1187,7 @@ class MainActivity : Activity() {
 
     private var nalezenaIp: String? = null
 
-    /** Tlačítko „Připojit / Znovu spárovat“ (telefon ho schová, když najde televizi s PlayCaption). */
+    /** Tlačítko „Připojit / Znovu spárovat“ (telefon ho schová, když najde televizi s NEXCAP). */
     private var pripojitBtn: View? = null
 
     /**
@@ -1837,8 +1837,8 @@ class MainActivity : Activity() {
 
     private fun pozadejOPovoleni() {
         zkouselPovoleni = true
-        // co nejblíž k povolení: 1) stránka povolení pro PlayCaption, 2) seznam aplikací s tímhle povolením,
-        // 3) nastavení aplikace PlayCaption (tam bývá „Zobrazovat přes jiné aplikace“), 4) až pak návod
+        // co nejblíž k povolení: 1) stránka povolení pro NEXCAP, 2) seznam aplikací s tímhle povolením,
+        // 3) nastavení aplikace NEXCAP (tam bývá „Zobrazovat přes jiné aplikace“), 4) až pak návod
         val pokusy = listOf(
             Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
             Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
