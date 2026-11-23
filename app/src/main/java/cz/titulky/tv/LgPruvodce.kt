@@ -123,7 +123,7 @@ class LgPruvodce(private val activity: Activity, private val vyhledej: () -> Uni
             setPadding(dp(24), dp(24), dp(24), dp(20))
         }
         val hlavicka = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
-        hlavicka.addView(text("PlayCaption · LG webOS", 22f).apply { typeface = Typeface.DEFAULT_BOLD },
+        hlavicka.addView(text("NEXCAP · LG webOS", 22f).apply { typeface = Typeface.DEFAULT_BOLD },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         hlavicka.addView(tlacitko(t("lgZavrit")) { dialog.dismiss() })
         koren.addView(hlavicka)
@@ -287,7 +287,7 @@ class LgPruvodce(private val activity: Activity, private val vyhledej: () -> Uni
                     val stav = job.zkontroluj(ipOperace, heslo, prubeh)
                     val profiles = TvProfily(activity)
                     val old = profiles.najdi(stav.id)
-                    profiles.zapamatuj(stav.id, old?.jmeno ?: "LG PlayCaption · " + stav.id.removePrefix("lg-").uppercase(), ipOperace, TvPlatforma.WEBOS)
+                    profiles.zapamatuj(stav.id, old?.jmeno ?: "LG NEXCAP · " + stav.id.removePrefix("lg-").uppercase(), ipOperace, TvPlatforma.WEBOS)
                     LgDevMode.obnov(activity, stav.id)
                     ui.post { if (dialog.isShowing && !activity.isDestroyed && instalator === job) {
                         bezi = false; prijimac = stav; overenaIp = ipOperace; vykresli()
