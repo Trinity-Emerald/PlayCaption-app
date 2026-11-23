@@ -1,0 +1,65 @@
+name: Build NEXCAP Desktop for Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/bluestacks-manual-ps5]
+    paths: [.github/workflows/build-desktop.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test desktop sender with webOS service
+        shell: pwsh
+        run: |
+          $env:PYTHON = 'python'
+          node desktop/test_transport.cjs
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: git
+          pacboy: >-
+            gcc:p cmake:p ninja:p pkgconf:p protobuf:p python:p python-protobuf:p
+            curl:p openssl:p json-c:p miniupnpc:p libevent:p
+      - name: Build video-only libchiaki bridge
+        shell: msys2 {0}
+        run: bash desktop/native/build-msys2.sh
+      - name: Package and smoke-test the Windows application
+        shell: pwsh
+        run: |
+          Set-Location desktop
+          python -m pip install -r requirements-build.txt
+          python -m PyInstaller --noconfirm --windowed --name 'NEXCAP Desktop' --icon nexcap.ico --add-data 'nexcap.ico:.' nexcap.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $app = 'dist/NEXCAP Desktop'
+          Copy-Item -Recurse build-native/runtime "$app/_internal/native"
+          Copy-Item -Recurse build-native/notices "$app/Open-source notices"
+          Copy-Item ../LICENSE "$app/LICENSE-PlayCaption.txt"
+          Copy-Item README.md "$app/README.md"
+          $process = Start-Process "$app/NEXCAP Desktop.exe" -PassThru
+          try {
+            Start-Sleep -Seconds 5
+            if ($process.HasExited -or !$process.MainWindowHandle) { throw 'NEXCAP window did not open.' }
+          } finally {
+            if (!$process.HasExited) { Stop-Process -Id $process.Id }
+          }
+          & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" installer.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXCAP-Desktop-PetrDevelop-Setup-x64
+          path: desktop/dist/NEXCAP-Desktop-PetrDevelop-Setup-x64.exe
+          if-no-files-found: error

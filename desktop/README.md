@@ -1,24 +1,44 @@
 # NEXCAP Desktop · PetrDevelop
 
-**Stav: první funkční prototyp přenosu titulků, nikoli hotový PS5 překladač.**
+NEXCAP Desktop je rozpracovaná aplikace pro Windows 10/11 x64. Přijímá video přes samostatný nativní proces postavený nad libchiaki, vybírá spodní část obrazu pro anglické OCR a posílá český překlad kompatibilnímu LG webOS přijímači na UDP portu 41989. Profil videa používá H.264, 720p při 30 fps. Audio větev je v Remote Play vypnutá. Obraz hry se dál sleduje na PS5 přes HDMI.
 
-Samostatná aplikace pro Windows 10/11, bez BlueStacks. První krok používá pouze standardní knihovnu Pythonu a umí poslat testovací český titulek přes UDP na existující LG webOS přijímač.
+## Test přijímače
 
-## Spuštění
-1. Nainstaluj Python 3.11+ pro Windows.
-2. V PowerShellu v kořeni repozitáře spusť `py desktop/nexcap.py`.
-3. Na LG otevři kompatibilní přijímač, zvol vstup HDMI a nech ho spuštěný.
-4. Zadej IP LG a klikni **Odeslat testovací titulek na LG**.
+1. Na LG otevři stávající přijímač, vyber vstup HDMI a zadej v NEXCAP jeho IPv4 adresu.
+2. Klikni na **Ověřit přijímač**. Odpověď potvrzuje síťovou dostupnost UDP služby.
+3. Klikni na **Odeslat titulek**. Vykreslení víceřádkového textu ověř na HDMI obrazu televizoru. Pokud zároveň odesílá Android, jeho IP může po posledním paketu ještě pět sekund držet aktivní relaci.
 
-Paket odpovídá protokolu `webos/service/protocol.js`: `PCT1<TAB>id<TAB>duration<TAB>text<TAB>hint`, UDP port 41989. Odeslání paketu samo o sobě **nepotvrzuje zobrazení**; vyžaduje test na TV.
+## Remote Play a překlad
 
-## Plán implementace
-- Windows-native PS5 Remote Play přes Chiaki/libchiaki (ne Android JNI).
-- Příjem a dekódování videa, OCR titulků a překlad.
-- Odesílání překladů na LG, potlačení duplicit a časování.
-- Windows tray aplikace a instalátor .exe; bezpečné ukládání PSN údajů.
-- Automatické testy, balení a přejímka s fyzickou PS5/LG.
+1. Nainstaluj FFmpeg a Tesseract s anglickým modelem `eng` a přidej jejich spustitelné soubory do Windows PATH. NEXCAP očekává kompatibilní LibreTranslate server s překladem EN → CS a přístupem bez API klíče. Výchozí adresa je `http://localhost:5000/translate`. U vzdáleného serveru použij HTTPS. Server dostává rozpoznaný anglický text.
+2. Pro první párování použij IPv4 PS5, osmibajtové PSN Account ID v Base64 pro sekundární účet a osmimístný kód z nabídky Remote Play v PS5. Po úspěšném párování zůstávají v NEXCAP jen klíče Remote Play zašifrované přes Windows DPAPI pro aktuální účet Windows. Kód ani identifikátor účtu se neukládají.
+3. V NEXCAP vyber **Spustit překlad**. Při výpadku obrazu NEXCAP opakuje spojení s prodlevou 2 až 30 sekund. Tlačítko **Do lišty** skryje okno. Překlad lze zastavit i z ikony v systémové liště.
+4. Hraj pod hlavním účtem na PS5. Současné hraní, chování ovladačů s připojeným sekundárním účtem, průběžné OCR ve hře a HDMI překryv patří do hardwarové přejímky.
 
-**Bezpečnost:** PSN údaje se zatím nikam nezadávají ani neukládají. Nepřenášej tokeny ze staré aplikace do testovacího prototypu.
+## Sestavení
 
-**Licence:** AGPL-3.0-or-later; tento fork vychází z původního projektu PlayCaption. Zachovat upstream oznámení o autorských právech a licence.
+Ve Windows spusť `bash desktop/native/build-msys2.sh` v prostředí MSYS2 MINGW64 s balíčky z desktopového workflow. Poté v PowerShellu spusť z adresáře `desktop`:
+
+```powershell
+python -m pip install -r requirements-build.txt
+python -m PyInstaller --noconfirm --windowed --name 'NEXCAP Desktop' --icon nexcap.ico --add-data 'nexcap.ico:.' nexcap.py
+Copy-Item -Recurse build-native/runtime 'dist/NEXCAP Desktop/_internal/native'
+Copy-Item -Recurse build-native/notices 'dist/NEXCAP Desktop/Open-source notices'
+Copy-Item ../LICENSE 'dist/NEXCAP Desktop/LICENSE-PlayCaption.txt'
+Copy-Item README.md 'dist/NEXCAP Desktop/README.md'
+& "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" installer.iss
+```
+
+Instalátor je v `desktop/dist/NEXCAP-Desktop-PetrDevelop-Setup-x64.exe`.
+
+## Ověření
+
+- `node desktop/test_transport.cjs` ověřuje pomocí skutečných UDP socketů diagnostickou odpověď a doručení českého titulku do produkčního parseru a příjemce webOS. Nahrazené jsou rozhraní služby webOS a síťová identita TV.
+- `python desktop/test_pipeline.py` ověřuje skutečný dekodér FFmpeg, anglické OCR přes Tesseract, formát požadavku a odpovědi LibreTranslate přes lokální testovací HTTP server a UDP výstup. Vstupem je syntetické H.264 video a server vrací pevný očekávaný překlad.
+- Na fyzické PS5 a LG ověř párování sekundárního účtu, stabilní obraz bez přehrávání zvuku, obnovu po výpadku a projekci přes HDMI. Kvalita OCR závisí na umístění a stylu titulků ve hře.
+
+## Android a závislosti
+
+Android používá párování a relaci v `RemotePlay.kt` a `RemotePlayService.kt`, ML Kit v `Ctecka.kt` a `Prekladac.kt` a upravené knihovny Android NDK v `native/`. Desktop přímo kompiluje nativní libchiaki z pevně určeného commitu projektu chiaki-ng a používá jeho registrační a video callbacky. Část FFmpeg a Tesseract se instaluje samostatně. Android a LG mají vlastní existující úložiště a desktop je nepoužívá.
+
+NEXCAP Desktop a PlayCaption používají AGPL-3.0-or-later. Instalátor přikládá licenci PlayCaption a upstream licence a odkaz na zdrojový commit chiaki-ng (AGPL-3.0 s výjimkou pro OpenSSL). Zachovány jsou zásluhy původních autorů Chiaki a přispěvatelů chiaki-ng, nanopb, GF-Complete, Jerasure a curl.

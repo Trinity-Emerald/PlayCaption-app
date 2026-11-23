@@ -30,3 +30,9 @@ app/release/
 
 __pycache__/
 *.pyc
+
+/desktop/__pycache__/
+/desktop/build/
+/desktop/build-native/
+/desktop/dist/
+/desktop/*.spec
