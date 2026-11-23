@@ -51,7 +51,7 @@ internal class PrihlaseniTelefonem(private val cesky: Boolean, private val pokus
             c.use {
                 c.soTimeout = 15000
                 val r = c.getInputStream().bufferedReader()
-                // otevřel to sám telefon, na kterém PlayCaption běží (ne telefon u televize)
+                // otevřel to sám telefon, na kterém NEXCAP běží (ne telefon u televize)
                 val mistni = c.inetAddress.isLoopbackAddress
                 val prvni = r.readLine() ?: return
                 val cesta = prvni.split(" ").getOrNull(1) ?: "/"
@@ -135,7 +135,7 @@ internal class PrihlaseniTelefonem(private val cesky: Boolean, private val pokus
         return """<!DOCTYPE html><html><head><meta charset="utf-8">
             <meta name="viewport" content="width=device-width,initial-scale=1">
             ${if (stav == PsnPokus.Stav.OVERUJE) "<meta http-equiv=refresh content=\"1;url=/stav?p=$relace\">" else ""}
-            <title>PlayCaption</title><style>
+            <title>NEXCAP</title><style>
             body{background:#111;color:#eee;font-family:sans-serif;margin:0;padding:20px;max-width:560px}
             h1{color:#e5091a;margin:0 0 6px}h2{margin:22px 0 4px;color:#e5091a}
             p{line-height:1.45}
@@ -152,7 +152,7 @@ internal class PrihlaseniTelefonem(private val cesky: Boolean, private val pokus
             .adr{background:#fff;border:3px solid #e5091a;border-radius:10px;padding:8px;color:#333;font-size:13px;text-align:center}
             .sipka{color:#e5091a;font-weight:bold;text-align:center;padding:6px;background:#fff}
             .bila{height:70px;display:flex;align-items:center;justify-content:center;color:#999;font-size:14px;background:#fff}
-            </style></head><body><h1>PlayCaption</h1>$obsah</body></html>"""
+            </style></head><body><h1>NEXCAP</h1>$obsah</body></html>"""
     }
 
     companion object {
@@ -162,10 +162,10 @@ internal class PrihlaseniTelefonem(private val cesky: Boolean, private val pokus
             "psnSony" to "Sony rejected account verification. Try signing in again later.",
             "psnLimit" to "Sony received too many requests. Wait a while before signing in again.",
             "psnCas" to "Sony did not respond in time. Check your internet connection and sign in again.",
-            "psnSit" to "Could not connect to Sony. Check the internet connection on the device running PlayCaption.",
+            "psnSit" to "Could not connect to Sony. Check the internet connection on the device running NEXCAP.",
             "psnOdpoved" to "Sony returned an invalid account response. The account was not saved; sign in again.",
-            "psnUlozeni" to "Could not save the account on the device running PlayCaption. Try again.",
-            "psnStranka" to "Could not open the local sign-in page. Close other PlayCaption instances and open sign-in again."
+            "psnUlozeni" to "Could not save the account on the device running NEXCAP. Try again.",
+            "psnStranka" to "Could not open the local sign-in page. Close other NEXCAP instances and open sign-in again."
         )
 
         private val CS = listOf(
@@ -184,12 +184,12 @@ internal class PrihlaseniTelefonem(private val cesky: Boolean, private val pokus
             "Sem podrž prst a dej Vložit"
         )
         private val CS_TELEFON = listOf(
-            "✔ Hotovo! Účet je uložený. Zavři prohlížeč a vrať se do aplikace PlayCaption.",
-            "<b>Vrať se do aplikace PlayCaption a klepni znovu na „Otevřít v prohlížeči“</b> – otevře se zase tahle stránka. Do pole dole podrž prst → <b>Vložit</b>. Odešle se to samo."
+            "✔ Hotovo! Účet je uložený. Zavři prohlížeč a vrať se do aplikace NEXCAP.",
+            "<b>Vrať se do aplikace NEXCAP a klepni znovu na „Otevřít v prohlížeči“</b> – otevře se zase tahle stránka. Do pole dole podrž prst → <b>Vložit</b>. Odešle se to samo."
         )
         private val EN_TELEFON = listOf(
-            "✔ Done! The account is saved. Close the browser and go back to the PlayCaption app.",
-            "<b>Go back to the PlayCaption app and tap “Open in browser” again</b> – this page opens again. Long-press the box below → <b>Paste</b>. It sends itself."
+            "✔ Done! The account is saved. Close the browser and go back to the NEXCAP app.",
+            "<b>Go back to the NEXCAP app and tap “Open in browser” again</b> – this page opens again. Long-press the box below → <b>Paste</b>. It sends itself."
         )
         private val EN = listOf(
             "✔ Done! The account is on the TV. You can close this page and continue on the TV.",
