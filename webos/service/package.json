@@ -1,6 +1,6 @@
 {
   "name": "cz.playcaption.overlaytest.receiver",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "PlayCaption UDP subtitle receiver",
   "main": "service.js",
   "license": "AGPL-3.0-or-later"

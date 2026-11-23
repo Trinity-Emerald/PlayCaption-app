@@ -4,10 +4,10 @@ var Service = require("webos-service");
 var dgram = require("dgram");
 var os = require("os");
 var crypto = require("crypto");
-var parse = require("./protocol").parse;
+var protocol = require("./protocol");
 var service = new Service(require("./package.json").name);
 require("./switch-input").register(service);
-var subscriptions = {};
+var subscriptions = Object.create(null);
 var socket = null;
 var announceTimer = null;
 var ready = false;
@@ -23,12 +23,24 @@ function notify(payload) {
     Object.keys(subscriptions).forEach(function (key) { subscriptions[key].respond(payload); });
 }
 
+function send(receiver, bytes, port, address, callback) {
+    receiver.send(bytes, 0, bytes.length, port, address, callback);
+}
+
+function state() {
+    return {returnValue:true, ready:ready, networkReady:networkReady, name:receiverName,
+        udpPort:41989, discoveryWarning:discoveryWarning};
+}
+
+var discoveryWarning = "";
+
 function stop() {
     clearInterval(announceTimer);
     announceTimer = null;
     ready = false;
     networkReady = false;
     announcement = null;
+    discoveryWarning = "";
     storyPeer = null;
     sender = null;
     senderSeen = 0;
@@ -45,12 +57,15 @@ function start() {
         if (socket !== receiver) return;
         // Po obnovení Wi-Fi/LAN se IP i broadcast mohou změnit bez restartu služby.
         var addresses = [];
+        var hasIPv4 = false;
         var identity = os.hostname();
         var interfaces = os.networkInterfaces();
         Object.keys(interfaces).forEach(function (name) {
             interfaces[name].forEach(function (iface) {
-                if (iface.internal || iface.family !== "IPv4") return;
+                if (iface.internal || (iface.family !== "IPv4" && iface.family !== 4)) return;
+                hasIPv4 = true;
                 identity += iface.mac;
+                if (!iface.netmask) return;
                 var ip = iface.address.split(".");
                 var mask = iface.netmask.split(".");
                 addresses.push(ip.map(function (part, i) { return Number(part) | (255 ^ Number(mask[i])); }).join("."));
@@ -58,30 +73,31 @@ function start() {
         });
         var id = crypto.createHash("sha256").update(identity).digest("hex").slice(0, 12);
         var name = "LG PlayCaption · " + id.toUpperCase();
-        var changed = receiverName !== name || networkReady !== (addresses.length > 0);
         receiverName = name;
-        networkReady = addresses.length > 0;
-        announcement = Buffer.from("PLAYCAPTION_TV\tlg-" + id + "\t" + receiverName + "\t0", "utf8");
-        if (changed) notify({ returnValue:true, ready:ready, networkReady:networkReady, name:receiverName });
+        networkReady = hasIPv4;
+        announcement = protocol.encode("PLAYCAPTION_TV\tlg-" + id + "\t" + receiverName + "\t0");
+        notify(state());
+        if (discoveryWarning) return;
         addresses.forEach(function (address) {
-            receiver.send(announcement, 41988, address, function (error) {
+            send(receiver, announcement, 41988, address, function (error) {
                 if (error) console.error("PlayCaption discovery:", error.code);
             });
         });
     }
     receiver.on("error", function (error) {
         if (socket !== receiver) return;
-        notify({ returnValue: false, errorText: "Příjem UDP selhal: " + error.code });
         stop();
+        notify({ returnValue: false, udpPort: 41989, errorText: "Příjem UDP selhal: " + (error.code || error.message) });
     });
     receiver.on("message", function (buffer, remote) {
         if (socket !== receiver) return;
         var query = buffer.length === 49 && /^PLAYCAPTION_FIND\t([a-f0-9]{32})$/.exec(buffer.toString("utf8"));
         if (query && ready && announcement) {
-            receiver.send(Buffer.concat([announcement, Buffer.from("\t" + query[1])]), remote.port, remote.address, function () {});
+            send(receiver, Buffer.concat([announcement, protocol.encode("\t" + query[1])]), remote.port, remote.address, function () {});
+            notify({returnValue:true, probe:"PLAYCAPTION_FIND", source:remote.address});
             return;
         }
-        var packet = parse(buffer);
+        var packet = protocol.parse(buffer);
         var now = Date.now();
         if (!packet) return;
         // Starý Android mění UDP porty: do budoucího párování držíme zdroj podle IP.
@@ -93,7 +109,8 @@ function start() {
             return;
         }
         if (packet.kind === "storyQuery") {
-            receiver.send(Buffer.from("PCA1\t" + packet.id + "\tready"), remote.port, remote.address, function () {});
+            send(receiver, protocol.encode("PCA1\t" + packet.id + "\tready"), remote.port, remote.address, function () {});
+            notify({returnValue:true, probe:"PCQ1", source:remote.address});
             return;
         }
         if (sender !== remote.address) storyPeer = null;
@@ -104,10 +121,10 @@ function start() {
     });
     receiver.bind(41989, "0.0.0.0", function () {
         if (socket !== receiver) return;
-        receiver.setBroadcast(true);
+        try { receiver.setBroadcast(true); }
+        catch (error) { discoveryWarning = "UDP broadcast: " + (error.code || error.message); }
         ready = true;
         announce();
-        notify({ returnValue: true, ready: true, networkReady: networkReady, name: receiverName });
         announceTimer = setInterval(announce, 2000);
     });
 }
@@ -118,7 +135,7 @@ service.register("listen", function (message) {
         return;
     }
     subscriptions[message.uniqueToken] = message;
-    message.respond({ returnValue: true, ready: ready, networkReady: networkReady, name: receiverName });
+    message.respond(state());
     start();
 }, function (message) {
     delete subscriptions[message.uniqueToken];
@@ -130,7 +147,7 @@ service.register("storyAck", function (message) {
     if (!socket || !storyPeer || p.id !== storyPeer.id || ["reading", "done"].indexOf(p.state) < 0) {
         message.respond({returnValue:false}); return;
     }
-    socket.send(Buffer.from("PCA1\t" + p.id + "\t" + p.state), storyPeer.port, storyPeer.address, function (error) {
+    send(socket, protocol.encode("PCA1\t" + p.id + "\t" + p.state), storyPeer.port, storyPeer.address, function (error) {
         message.respond({returnValue:!error});
     });
 });

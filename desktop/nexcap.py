@@ -17,8 +17,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("NEXCAP Desktop · PetrDevelop")
-        self.geometry("660x665")
-        self.minsize(560, 650)
+        self.geometry("700x765")
+        self.minsize(670, 730)
         self.configure(bg="#10141c")
         self.executor = ThreadPoolExecutor(max_workers=1)
         self.events = SimpleQueue()
@@ -28,12 +28,15 @@ class App(tk.Tk):
         if self.icon_path.is_file() and sys.platform == "win32":
             self.iconbitmap(str(self.icon_path))
         self.protocol("WM_DELETE_WINDOW", self.close)
-        self.ip = tk.StringVar()
+        self.ip = tk.StringVar(value="192.168.0.17")
         self.console = tk.StringVar()
         self.account = tk.StringVar()
         self.pin = tk.StringVar()
-        self.endpoint = tk.StringVar(value="http://localhost:5000/translate")
-        self.status = tk.StringVar(value="Zadej IP adresu z LG přijímače.")
+        self.endpoint = tk.StringVar()
+        self.caption = tk.StringVar()
+        self.caption_timeout = None
+        self.lg = tk.StringVar(value="LG čeká na ověření.")
+        self.status = tk.StringVar(value="Připoj PS5 nebo ověř LG přijímač.")
 
         style = ttk.Style(self)
         style.theme_use("clam")
@@ -74,7 +77,7 @@ class App(tk.Tk):
             ("IPv4 PS5", self.console, False),
             ("Sekundární PSN Account ID", self.account, True),
             ("Kód propojení PS5", self.pin, True),
-            ("LibreTranslate URL", self.endpoint, False),
+            ("LibreTranslate URL (volitelné)", self.endpoint, False),
         )):
             ttk.Label(settings, text=label).grid(row=row, column=0, sticky="w", padx=(0, 12))
             ttk.Entry(settings, textvariable=variable, show="•" if masked else "").grid(
@@ -96,9 +99,13 @@ class App(tk.Tk):
         self.operation_buttons = (self.probe_button, self.send_button,
                                   self.pair_button, self.video_button, self.start_button)
         self.after(125, self.read_events)
+        ttk.Label(root, textvariable=self.lg, style="Status.TLabel").pack(anchor="w", pady=(12, 0))
         status = ttk.Label(root, textvariable=self.status, style="Status.TLabel")
         status.pack(anchor="w", fill="x", pady=(15, 0))
         status.bind("<Configure>", lambda event: status.configure(wraplength=event.width))
+        caption = ttk.Label(root, textvariable=self.caption, font=("Segoe UI", 16, "bold"))
+        caption.pack(anchor="w", fill="x", pady=(10, 0))
+        caption.bind("<Configure>", lambda event: caption.configure(wraplength=event.width))
 
     def probe(self):
         def check(ip):
@@ -129,10 +136,26 @@ class App(tk.Tk):
         self.stop_stream.clear()
         self.stop_button.state(["!disabled"])
         self.run(stream_console, self.console.get(), self.ip.get(), self.endpoint.get(),
-                 self.stop_stream, self.report, pending="Spouštím Remote Play…")
+                 self.stop_stream, self.report, self.report_lg, self.report_caption, pending="Spouštím Remote Play…")
 
     def report(self, message):
         self.events.put((self.status.set, message))
+
+    def report_lg(self, message):
+        self.events.put((self.lg.set, message))
+
+    def report_caption(self, message):
+        self.events.put((self.show_caption, message))
+
+    def show_caption(self, message):
+        if self.caption_timeout is not None:
+            self.after_cancel(self.caption_timeout)
+        self.caption.set(message)
+        self.caption_timeout = self.after(6000, self.clear_caption) if message else None
+
+    def clear_caption(self):
+        self.caption_timeout = None
+        self.caption.set("")
 
     def read_events(self):
         try:
@@ -178,6 +201,7 @@ class App(tk.Tk):
         future.add_done_callback(lambda result: self.events.put((self.completed, result)))
 
     def completed(self, future):
+        self.show_caption("")
         try:
             self.status.set(future.result())
         except Exception as exc:
@@ -196,4 +220,9 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
-    App().mainloop()
+    if sys.argv[1:] == ["--self-test-translation"]:
+        from offline import offline_translator
+        if offline_translator()("Follow me!") not in {"Za mnou!", "Pojď za mnou!", "Následuj mě!"}:
+            raise SystemExit(1)
+    else:
+        App().mainloop()

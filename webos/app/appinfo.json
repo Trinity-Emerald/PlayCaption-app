@@ -1,6 +1,6 @@
 {
   "id": "cz.playcaption.overlaytest",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "vendor": "PlayCaption",
   "type": "web",
   "main": "index.html",

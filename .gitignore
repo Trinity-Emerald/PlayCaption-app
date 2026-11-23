@@ -36,3 +36,4 @@ __pycache__/
 /desktop/build-native/
 /desktop/dist/
 /desktop/*.spec
+/desktop/translate-en-cs/

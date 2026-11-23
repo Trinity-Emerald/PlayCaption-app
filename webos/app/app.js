@@ -37,15 +37,28 @@
     var receiverFailure = false;
     var receiverLabel = "LG PlayCaption";
     var receiverVersion = "neznámá";
+    var lastReplyAt = 0, retryAt = 0;
+    var serviceSeen = false, lastError = "", lastPacket = "", discoveryWarning = "";
+    var lifecycle = "spuštění";
+    var startupDiagnostics = document.getElementById("startup-diagnostics");
+    var startupTest = document.getElementById("startup-test");
+    if (startupTest) startupTest.onclick = function () { localTest(true); };
 
     function updateInfo(now) {
+        var diagnostics = "Služba: " + (serviceSeen ? "odpověděla" : "čekám na odpověď") +
+            " · UDP 41989: " + (receiverReady ? "naslouchá" : "nepotvrzeno") +
+            " · UI: " + lifecycle +
+            "\nPoslední paket: " + (lastPacket || "žádný") +
+            (lastError ? "\nPoslední chyba: " + lastError : "") +
+            (discoveryWarning ? "\n" + discoveryWarning : "");
+        if (startupDiagnostics && !inputPanel.hidden) startupDiagnostics.textContent = diagnostics;
         if (!controls || controls.hidden) return;
         var state = activityWarning || protocolWarning || (!receiverReady || !receiverNetworkReady || receiverFailure ? statusText : lastDataAt ?
             (now - lastDataAt <= 5000 ? "Zařízení posílá platná data." : "Komunikace byla přerušena.") : "Přijímač je připraven, čeká na zařízení.");
         var saved = "nezvolen";
         try { saved = localStorage.getItem("playcaption-input") || saved; } catch (error) {}
         var port = /hdmi([1-9][0-9]*)$/.exec(saved);
-        document.getElementById("connection-info").textContent = receiverLabel + " · verze " + receiverVersion + "\n" + state +
+        document.getElementById("connection-info").textContent = receiverLabel + " · verze " + receiverVersion + "\n" + state + "\n" + diagnostics +
             "\nPoslední data: " + (lastDataAt ? Math.max(0, Math.floor((now - lastDataAt) / 1000)) + " s" : "žádná") +
             " · poslední titulek: " + (lastCaptionAt ? Math.max(0, Math.floor((now - lastCaptionAt) / 1000)) + " s" : "žádný") +
             "\nNaposledy vybraný vstup: " + (port ? "HDMI " + port[1] : "nezvolen") +
@@ -68,17 +81,27 @@
         if (visible) { controlIndex = 0; controlButtons[0].focus(); updateInfo(Date.now()); }
     }
 
+    function localTest(fromInput) {
+        showControls(false);
+        var launchState = lifecycle;
+        if (fromInput) inputPanel.hidden = true;
+        testSubtitle.textContent = "Lokální test zobrazení · Příliš žluťoučký kůň.\nTento text neověřuje spojení ani překlad.";
+        testSubtitle.hidden = false;
+        testUntil = Date.now() + 5000;
+        output.hidden = true;
+        pauseMaskedStory(Date.now());
+        setTimeout(function () {
+            if (Date.now() < testUntil) return;
+            testSubtitle.hidden = true;
+            output.hidden = hiddenByUser;
+            if (fromInput && lifecycle === launchState) { inputPanel.hidden = false; startupTest.focus(); }
+        }, 5000);
+    }
+
     if (controls) {
         controlButtons = ["change-input", "local-test", "toggle-output", "return-game", "close-app"].map(function (id) { return document.getElementById(id); });
         controlButtons[0].onclick = function () { showControls(false); configureLaunch({}); };
-        controlButtons[1].onclick = function () {
-            showControls(false);
-            testSubtitle.textContent = "Lokální test zobrazení · Příliš žluťoučký kůň.\nTento text neověřuje spojení ani překlad.";
-            testSubtitle.hidden = false;
-            testUntil = Date.now() + 5000;
-            output.hidden = true;
-            pauseMaskedStory(Date.now());
-        };
+        controlButtons[1].onclick = function () { localTest(false); };
         controlButtons[2].onclick = function () {
             hiddenByUser = !hiddenByUser;
             output.hidden = hiddenByUser || testUntil > Date.now();
@@ -120,6 +143,12 @@
         current.disabled = false;
         current.onclick = function () { inputPanel.hidden = true; };
         if (inputBridge) inputBridge.cancel();
+        inputButtons = startupTest ? [startupTest, current] : [current];
+        current.focus();
+        if (typeof PalmServiceBridge === "undefined") {
+            inputStatus.textContent = "Rozhraní HDMI není dostupné.";
+            return;
+        }
         var request = new PalmServiceBridge();
         inputBridge = request;
         request.onservicecallback = function (raw) {
@@ -131,6 +160,7 @@
             var devices = Array.isArray(result.devices) ? result.devices.filter(function (device) {
                 return device && /^com\.webos\.app\.hdmi[1-9][0-9]*$/.test(device.appId || "");
             }) : [];
+            inputButtons = [];
             if (!result.returnValue || !Array.isArray(result.devices)) {
                 inputStatus.textContent = "LG neposkytla seznam vstupů. Pokud už vidíš obraz hry, zvol Pokračovat nad aktuálním obrazem. Jinak aplikaci zavři, vyber HDMI a znovu ji otevři.";
             } else {
@@ -163,18 +193,25 @@
                         inputButtons.push(button);
                     });
             }
+            if (startupTest) inputButtons.push(startupTest);
             inputButtons.push(current);
             var saved;
             try { saved = localStorage.getItem("playcaption-input"); } catch (error) {}
-            inputIndex = Math.max(0, devices.findIndex(function (device) { return device.appId === saved; }));
+            inputIndex = 0;
+            devices.some(function (device, index) {
+                if (device.appId !== saved) return false;
+                inputIndex = index;
+                return true;
+            });
             inputButtons[inputIndex].focus();
         };
-        request.call("luna://com.webos.service.eim/getAllInputStatus", "{}");
+        try { request.call("luna://com.webos.service.eim/getAllInputStatus", "{}"); }
+        catch (error) { inputStatus.textContent = "Volání seznamu HDMI selhalo: " + error.message; }
     }
 
     function showStatus(text) {
         statusText = text;
-        status.textContent = activityWarning || protocolWarning || text;
+        status.textContent = receiverFailure ? text : activityWarning || protocolWarning || text;
         status.hidden = false;
     }
 
@@ -210,11 +247,7 @@
             activityBridge.cancel();
             activityBridge = null;
         }
-        if (bridge) {
-            bridge.onservicecallback = function () {};
-            bridge.cancel();
-            bridge = null;
-        }
+        cancelReceiver();
         clearText();
         activityWarning = "";
         protocolWarning = "";
@@ -239,7 +272,8 @@
             activityBridge = null;
         };
         // LG zavírá nečinný overlay po 120 s, i když se jeho text průběžně mění.
-        request.call("luna://com.webos.surfacemanager.screenSaver/restartUserActivityTimer", "{}");
+        try { request.call("luna://com.webos.surfacemanager.screenSaver/restartUserActivityTimer", "{}"); }
+        catch (error) { activityWarning = "LG odmítá prodloužení překryvu: " + error.message; }
     }
 
     var ackBridge = null;
@@ -250,23 +284,45 @@
         request.onservicecallback = function () { clearTimeout(timeout); if (ackBridge === request) ackBridge = null; };
         request.call("luna://cz.playcaption.overlaytest.receiver/storyAck", JSON.stringify({id:id,state:state}));
     }
+    function cancelReceiver() {
+        if (!bridge) return;
+        var old = bridge;
+        bridge = null;
+        old.onservicecallback = function () {};
+        old.cancel();
+    }
+
+    function receiverError(text) {
+        receiverReady = false;
+        receiverFailure = true;
+        lastError = text;
+        protocolWarning = "";
+        retryAt = Date.now() + 3000;
+        showStatus("PlayCaption LG · " + text + " · opakuji spojení");
+        updateInfo(Date.now());
+    }
+
     function receive(raw) {
         var result;
         try {
             result = JSON.parse(raw);
             if (!result || typeof result !== "object") throw new Error("Neplatná odpověď");
         } catch (error) {
-            receiverReady = false; receiverFailure = true;
-            protocolWarning = "";
+            receiverError("neplatná odpověď přijímače");
             clearText();
-            showStatus("PlayCaption: neplatná odpověď přijímače. Zkus aplikaci spustit znovu.");
             return;
         }
         if (!result.returnValue) {
-            receiverReady = false; receiverFailure = true;
-            protocolWarning = "";
+            if (result.udpPort) serviceSeen = true;
+            receiverError(result.errorText || "přijímač není dostupný");
             clearText();
-            showStatus("PlayCaption: " + (result.errorText || "přijímač není dostupný"));
+            return;
+        }
+        serviceSeen = true;
+        lastReplyAt = Date.now();
+        if (result.probe) {
+            lastPacket = result.probe + " od " + result.source;
+            updateInfo(lastReplyAt);
             return;
         }
         if (result.unsupportedStory) {
@@ -279,7 +335,9 @@
             var name = typeof result.name === "string" ? result.name.slice(0, 64) : "LG PlayCaption";
             receiverLabel = name; receiverReady = Boolean(result.ready);
             receiverNetworkReady = result.networkReady !== false;
-            if (receiverReady) receiverFailure = false;
+            discoveryWarning = result.discoveryWarning || "";
+            if (receiverReady) { receiverFailure = false; retryAt = 0; }
+            if (lastSeen && receiverReady && receiverNetworkReady) return;
             showStatus(result.ready && !receiverNetworkReady ? "PlayCaption LG · Čekám na síť TV. Zkontroluj Wi-Fi nebo síťový kabel · OK / Zpět = nabídka" : result.ready ? "PlayCaption LG · Čekám na zařízení. Vyber „" + name + "“ · OK / Zpět = nabídka" : receiverFailure ? statusText : "PlayCaption LG · Spouštím příjem…");
             return;
         }
@@ -287,6 +345,8 @@
         if (packet.kind === "subtitle" || packet.kind === "story") protocolWarning = "";
         receiverReady = true; receiverFailure = false;
         lastDataAt = now;
+        lastPacket = packet.kind + (packet.id ? " " + packet.id : "") + " od " + result.source +
+            (packet.text ? " · " + packet.text.slice(0, 100).replace(/\s+/g, " ") : "");
         statusText = "Zařízení posílá platná data. OK / Zpět = nabídka";
         var connectionChanged = source !== result.source || (lastSeen && now - lastSeen > 5000);
         if (connectionChanged) clearText(packet.kind === "story" && (!source || source === result.source));
@@ -330,33 +390,44 @@
         }
     }
 
-    function start() {
-        stop();
-        receiverStartedAt = Date.now(); receiverFailure = false;
-        hint.textContent = "";
-        showStatus("PlayCaption · Spouštím příjem…");
+    function connectReceiver() {
+        cancelReceiver();
+        receiverStartedAt = Date.now();
+        lastReplyAt = 0;
+        retryAt = 0;
+        if (!receiverFailure) showStatus("PlayCaption · Spouštím příjem…");
         if (typeof PalmServiceBridge === "undefined") {
-            showStatus("PlayCaption: příjem je dostupný pouze na LG webOS.");
+            receiverError("PalmServiceBridge není dostupný");
             return;
         }
-        var request = new PalmServiceBridge();
-        bridge = request;
-        request.onservicecallback = function (raw) { if (bridge === request) receive(raw); };
-        try { request.call("luna://cz.playcaption.overlaytest.receiver/listen", JSON.stringify({ subscribe: true })); }
-        catch (error) { receiverFailure = true; showStatus("PlayCaption LG · Volání služby přijímače selhalo. Zavři aplikaci a spusť ji znovu."); }
-        keepOverlayOpen();
+        try {
+            var request = new PalmServiceBridge();
+            bridge = request;
+            request.onservicecallback = function (raw) { if (bridge === request) receive(raw); };
+            request.call("luna://cz.playcaption.overlaytest.receiver/listen", JSON.stringify({ subscribe: true }));
+        } catch (error) { receiverError("Volání služby selhalo: " + error.message); }
+    }
+
+    function start() {
+        stop();
+        receiverFailure = false;
+        connectReceiver();
+        if (typeof PalmServiceBridge !== "undefined") keepOverlayOpen();
         timer = setInterval(function () {
             var now = Date.now();
-            if (!receiverReady && !receiverFailure && now - receiverStartedAt >= 10000) {
-                receiverFailure = true;
-                showStatus("PlayCaption LG · Služba nepotvrdila spuštění příjmu do 10 s. Zavři aplikaci a spusť ji znovu · OK / Zpět = nabídka");
+            if (retryAt && now >= retryAt) connectReceiver();
+            else if (!retryAt && !receiverReady && now - receiverStartedAt >= 10000) {
+                receiverError("Služba nepotvrdila spuštění příjmu do 10 s.");
+            }
+            if (!retryAt && receiverReady && lastReplyAt && now - lastReplyAt > 10000) {
+                receiverError("Odběr služby přestal odpovídat.");
             }
             if (receiverUI) {
                 if (lastSeen && now - lastSeen > 5000) receiverUI.pauseStory(now);
                 pauseMaskedStory(now);
                 receiverUI.tick(now);
             }
-            if (now - lastActivity >= 45000) keepOverlayOpen();
+            if (typeof PalmServiceBridge !== "undefined" && now - lastActivity >= 45000) keepOverlayOpen();
             if (now >= subtitleUntil) subtitle.hidden = true;
             if (now >= hintUntil) hint.hidden = true;
             if (testSubtitle && now >= testUntil) testSubtitle.hidden = true;
@@ -371,7 +442,21 @@
     }
 
     // shortcut: overlay není veřejný kontrakt LG, ověřit na každém cílovém firmwaru.
-    document.addEventListener("webOSRelaunch", function (event) { start(); configureLaunch(event && event.detail); });
+    document.addEventListener("webOSRelaunch", function (event) {
+        lifecycle = "obnovení aplikace";
+        if (timer === null) start();
+        else if (!receiverReady) connectReceiver();
+        configureLaunch(event && event.detail);
+    });
+    document.addEventListener("visibilitychange", function () {
+        lifecycle = document.hidden ? "na pozadí" : "v popředí";
+        if (!document.hidden && (timer === null || !receiverReady ||
+                (lastReplyAt && Date.now() - lastReplyAt > 10000))) {
+            if (timer === null) start();
+            else connectReceiver();
+        }
+        updateInfo(Date.now());
+    });
     document.addEventListener("keydown", function (event) {
         var back = event.keyCode === 461 || event.key === "Escape";
         if (controls && !controls.hidden) {
@@ -401,6 +486,7 @@
         }
     });
     window.addEventListener("pagehide", stop);
+    window.addEventListener("pageshow", function () { if (timer === null) start(); });
     start();
     configureLaunch();
 }());

@@ -27,6 +27,8 @@ body {
   bottom: 9%;
   left: 50%;
   transform: translateX(-50%);
+  width: 80%;
+  width: -webkit-max-content;
   width: max-content;
   max-width: 100%;
   box-sizing: border-box;
@@ -104,9 +106,9 @@ body {
 }
 #inputs button:focus, #controls button:focus { outline: none; border-color: #78e89b; background: #204b30; }
 #inputs .help, #controls .help { font-size: 20px; color: #ccc; }
-#controls { top: 5%; max-height: 90%; overflow: auto; }
+#inputs, #controls { top: 5%; max-height: 90%; overflow: auto; }
 #controls h2 { margin: 0; }
-#connection-info { white-space: pre-line; font-size: 22px; line-height: 1.4; }
+#startup-diagnostics, #connection-info { white-space: pre-line; font-size: 22px; line-height: 1.4; }
 
 #hint {
   bottom: 2%;

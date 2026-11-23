@@ -109,12 +109,13 @@ def main():
     (HERE / "dist/receiver-manifest.json").write_bytes(manifest_data)
     files = {ipk.name: ipk.read_bytes(), "LICENSE": (ROOT / "LICENSE").read_bytes()}
     files["receiver-manifest.json"] = manifest_data
+    files["LG-UJ6307.md"] = (HERE / "LG-UJ6307.md").read_bytes()
     files["NAVOD-LG.md"] = (HERE / "NAVOD-LG.md").read_bytes()
     files["SHODA-ANDROID.md"] = (HERE / "SHODA-ANDROID.md").read_bytes()
     files["INSTALACE-Z-ANDROIDU.md"] = (HERE / "INSTALACE-Z-ANDROIDU.md").read_bytes()
     files["source/LICENSE"] = (ROOT / "LICENSE").read_bytes()
     files["source/BACKLOG.md"] = (ROOT / "BACKLOG.md").read_bytes()
-    sources = ["README.md", "NAVOD-LG.md", "TESTOVANI.md", "SHODA-ANDROID.md", "INSTALACE-Z-ANDROIDU.md", "test.cjs", "test-udp.cjs", "test-input.cjs", "test-receiver.cjs", "test-controls.cjs", "test-story.cjs", "build.py", "test_build.py"]
+    sources = ["README.md", "LG-UJ6307.md", "NAVOD-LG.md", "TESTOVANI.md", "SHODA-ANDROID.md", "INSTALACE-Z-ANDROIDU.md", "test.cjs", "test-udp.cjs", "test-input.cjs", "test-receiver.cjs", "test-controls.cjs", "test-story.cjs", "test-legacy.js", "build.py", "test_build.py"]
     # as_posix: na Windows by relative_to dalo "app\\app.js" a název v ZIPu by nesouhlasil
     sources += [p.relative_to(HERE).as_posix() for folder in ["app", "service"] for p in sorted((HERE / folder).iterdir())]
     for name in sources:

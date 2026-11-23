@@ -1,13 +1,24 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 "use strict";
 
+exports.encode = function (text) {
+    return typeof Buffer.from === "function" ? Buffer.from(text, "utf8") : new Buffer(text, "utf8");
+};
+
+function colors(fields) {
+    for (var i = 0; i < fields.length; i++) {
+        if (fields[i].indexOf("B:") === 0) return fields[i].slice(2);
+    }
+    return "";
+}
+
 function unescape(text) {
     return text.replace(/\\(.)/g, function (_, ch) { return ch === "n" ? "\n" : ch; });
 }
 
 function area(fields) {
     var values = fields.map(function (value) { return value.trim() === "" ? NaN : Number(value); });
-    if (values.length !== 4 || !values.every(Number.isFinite)) return null;
+    if (values.length !== 4 || !values.every(isFinite)) return null;
     values = values.map(function (value) { return Math.max(0, Math.min(1, value)); });
     return values[2] > values[0] && values[3] > values[1] ? values : null;
 }
@@ -26,7 +37,7 @@ exports.parse = function (buffer) {
             if (durationPercent < 50 || durationPercent > 200) return null;
         }
         var converted = ["PCT1", "1", "60000", fields[3], ""].concat(fields.slice(4, 8), ["0", "B:" + fields[8]]);
-        var parsed = exports.parse(Buffer.from(converted.join("\t"), "utf8"));
+        var parsed = exports.parse(exports.encode(converted.join("\t")));
         if (!parsed || !parsed.layout) return null;
         parsed.kind = "story"; parsed.id = fields[1]; parsed.paused = fields[2] === "1";
         parsed.durationPercent = durationPercent;
@@ -56,7 +67,7 @@ exports.parse = function (buffer) {
     var layout = null;
     if (fields.length >= 9 && fields[5].indexOf("B:") !== 0) {
         var values = fields.slice(5, 9).map(function (value) { return value.trim() === "" ? NaN : Number(value); });
-        if (values.every(Number.isFinite)) {
+        if (values.every(isFinite)) {
             layout = [
                 Math.max(0, Math.min(1, values[0])),
                 Math.max(0.05, Math.min(1, values[1])),
@@ -73,7 +84,7 @@ exports.parse = function (buffer) {
         duration: Math.min(60000, duration > 0 ? duration : 6000),
         layout: layout,
         editing: Boolean(layout && fields[9] === "1"),
-        colors: (fields.find(function (value) { return value.indexOf("B:") === 0; }) || "B:").slice(2)
+        colors: colors(fields)
             .split(",").slice(0, 64).map(function (value) {
                 var number = /^-?\d{1,10}$/.test(value) ? Number(value) : 0;
                 return number >= -2147483648 && number <= 4294967295 ? number : 0;

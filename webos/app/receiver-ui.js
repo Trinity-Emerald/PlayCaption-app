@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 (function () {
     "use strict";
+    function characters(text) {
+        return text.match(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\s\S]/g) || [];
+    }
+
     window.PlayCaptionReceiverUI = function (document) {
         var choices = document.getElementById("choices");
         var yellow = document.getElementById("choice-frame");
@@ -23,7 +27,7 @@
             // Poškozené OCR může obsahovat i jediné dlouhé slovo; nesmí se ztratit jeho konec.
             if (!fits(ends[0])) {
                 var length = 0;
-                ends = Array.from(text.slice(0, ends[0])).map(function (ch) { length += ch.length; return length; });
+                ends = characters(text.slice(0, ends[0])).map(function (ch) { length += ch.length; return length; });
             }
             var low = 0, high = ends.length - 1, best = ends[0];
             while (low <= high) {
@@ -48,7 +52,8 @@
             if (start && captionPacket.text[start - 1] !== "\n") colors[0] = 0;
             paintCaption(rest.slice(0, end), colors);
             captionOffset += end;
-            var letters = Array.from(rest.slice(0, end).normalize("NFC")).length;
+            var page = rest.slice(0, end);
+            var letters = characters(typeof page.normalize === "function" ? page.normalize("NFC") : page).length;
             var storyDuration = captionPacket.adjustableTiming ?
                 Math.ceil(Math.max(1500, Math.ceil(letters * 1000 / 18)) * captionPacket.durationPercent * 80 / 10000) :
                 Math.max(1800, Math.ceil(letters * 1000 / 14));
@@ -184,7 +189,7 @@
 
         this.tick = function (now) {
             if (captionPacket && (!storyMode || !storyPaused) && now < captionUntil && now >= captionNext) {
-                if (captionOffset < captionPacket.text.trimEnd().length) nextCaption(now);
+                if (captionOffset < captionPacket.text.replace(/\s+$/, "").length) nextCaption(now);
                 else if (storyMode) { storyDone = true; captionPacket = null; subtitle.hidden = true; }
             }
             if (now >= choicesUntil) choices.hidden = true;

@@ -20,7 +20,8 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from credentials import load_keys, save_keys
-from transport import send_subtitle
+from offline import offline_translator
+from transport import probe_receiver, send_subtitle
 
 WINDOW = getattr(sp, "CREATE_NO_WINDOW", 0)
 APP_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
@@ -136,12 +137,13 @@ def read_frames(pipe, frames):
             frames.put_nowait(frame)
 
 
-def process_frames(decoder, stop, tesseract, url, tv, status, *, first_only=False, failed=None):
+def process_frames(decoder, stop, tesseract, translate_text, tv, status, *, first_only=False, failed=None, local_caption=None):
     frames = Queue(maxsize=1)
     reader = Thread(target=read_frames, args=(decoder.stdout, frames), daemon=True)
     reader.start()
     last_frame = time.monotonic()
     last_text = ""
+    czech = ""
     last_sent = 0.0
     previous = ""
     first_frame = True
@@ -162,22 +164,33 @@ def process_frames(decoder, stop, tesseract, url, tv, status, *, first_only=Fals
         if len(text) < 4 or SequenceMatcher(None, text, previous).ratio() < 0.85:
             previous = text
             continue
-        if SequenceMatcher(None, last_text, text).ratio() >= 0.9 and last_frame - last_sent < 6:
+        same = SequenceMatcher(None, last_text, text).ratio() >= 0.9
+        if same and last_frame - last_sent < 3.5:
             continue
         if stop.is_set():
             return
+        if not same:
+            try:
+                czech = translate_text(text)
+            except (OSError, ValueError, RuntimeError) as exc:
+                status(f"Překlad se nepodařil ({type(exc).__name__}). Zkouším znovu…")
+                if stop.wait(3):
+                    return
+                continue
+            last_text = text
+        if stop.is_set():
+            return
+        if not czech:
+            continue
+        if local_caption is not None:
+            local_caption(czech)
         try:
-            czech = translate(url, text)
-        except (OSError, ValueError) as exc:
-            status(f"Překlad se nepodařil ({type(exc).__name__}). Zkouším znovu…")
-            if stop.wait(3):
-                return
+            send_subtitle(tv, czech)
+        except OSError as exc:
+            status(f"Překlad hotov, odeslání na LG selhalo ({exc}).")
+            last_sent = time.monotonic() - 1.5
             continue
-        if stop.is_set():
-            return
-        send_subtitle(tv, czech)
         last_sent = time.monotonic()
-        last_text = text
         status("Český titulek odeslán přes UDP.")
 
 
@@ -185,13 +198,15 @@ def test_console(address, stop, status):
     return stream_console(address, None, None, stop, status)
 
 
-def stream_console(address, tv, endpoint, stop, status):
+def stream_console(address, tv, endpoint, stop, status, lg_status=None, local_caption=None):
     host = console_address(address)
     test_only = endpoint is None
-    url = None
+    translate_text = None
     if not test_only:
         tv = console_address(tv)
-        url = translation_url(endpoint)
+        if endpoint.strip():
+            url = translation_url(endpoint)
+            translate_text = lambda text: translate(url, text)
     keys = load_keys(host)
     helper = helper_path()
     ffmpeg = shutil.which("ffmpeg")
@@ -200,6 +215,33 @@ def stream_console(address, tv, endpoint, stop, status):
         raise ValueError("Přidej FFmpeg do Windows PATH.")
     if not test_only and not tesseract:
         raise ValueError("Přidej Tesseract OCR s modelem eng do Windows PATH.")
+    if not test_only and translate_text is None:
+        status("Načítám místní překlad EN → CS…")
+        translate_text = offline_translator()
+    if lg_status is None:
+        return run_sessions(host, tv, keys, helper, ffmpeg, tesseract, translate_text, stop, status, test_only, local_caption)
+    finished = Event()
+
+    def monitor_lg():
+        while not finished.is_set():
+            try:
+                name = probe_receiver(tv, timeout=0.7, attempts=1)
+                lg_status(f"{name} odpovídá na UDP.")
+            except OSError:
+                lg_status("LG neodpovídá. Opakuji kontrolu UDP.")
+            finished.wait(3)
+
+    monitor = Thread(target=monitor_lg, daemon=True)
+    monitor.start()
+    try:
+        return run_sessions(host, tv, keys, helper, ffmpeg, tesseract, translate_text, stop, status, test_only, local_caption)
+    finally:
+        finished.set()
+        monitor.join()
+        lg_status("Kontrola LG zastavena.")
+
+
+def run_sessions(host, tv, keys, helper, ffmpeg, tesseract, translate_text, stop, status, test_only, local_caption):
     delay = 2
     while not stop.is_set():
         status(f"Připojuji se k PS5 na {host}…")
@@ -224,8 +266,8 @@ def stream_console(address, tv, endpoint, stop, status):
                 with child(decoder_command(ffmpeg), stdin=remote.stdout, stdout=sp.PIPE,
                            stderr=sp.DEVNULL) as decoder:
                     remote.stdout.close()
-                    if process_frames(decoder, stop, tesseract, url, tv, status,
-                                      first_only=test_only, failed=pin_required):
+                    if process_frames(decoder, stop, tesseract, translate_text, tv, status,
+                                      first_only=test_only, failed=pin_required, local_caption=local_caption):
                         return "Test PS5 prošel. NEXCAP přijal a dekódoval snímek videa."
             except BrokenPipeError:
                 pass

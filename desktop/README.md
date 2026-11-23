@@ -10,9 +10,9 @@ NEXCAP Desktop je rozpracovaná aplikace pro Windows 10/11 x64. Přijímá video
 
 ## Remote Play a překlad
 
-1. Nainstaluj FFmpeg a Tesseract s anglickým modelem `eng` a přidej jejich spustitelné soubory do Windows PATH. NEXCAP očekává kompatibilní LibreTranslate server s překladem EN → CS a přístupem bez API klíče. Výchozí adresa je `http://localhost:5000/translate`. U vzdáleného serveru použij HTTPS. Server dostává rozpoznaný anglický text.
-2. Pro první párování použij IPv4 PS5, osmibajtové PSN Account ID v Base64 pro sekundární účet a osmimístný kód z nabídky Remote Play v PS5. Po úspěšném párování zůstávají v NEXCAP jen klíče Remote Play zašifrované přes Windows DPAPI pro aktuální účet Windows. Kód ani identifikátor účtu se neukládají.
-3. Klikni na **Ověřit PS5** pro samostatný test příjmu a dekódování videa. Poté vyber **Spustit překlad**. Při výpadku obrazu NEXCAP opakuje spojení s prodlevou 2 až 30 sekund. Tlačítko **Do lišty** skryje okno. Překlad lze zastavit i z ikony v systémové liště.
+1. Nainstaluj FFmpeg a Tesseract s anglickým modelem `eng` a přidej jejich spustitelné soubory do Windows PATH. Instalátor obsahuje místní model EN → CS, který běží na CPU. Pole LibreTranslate může zůstat prázdné. Při vyplnění se použije kompatibilní server bez API klíče. U vzdáleného serveru použij HTTPS. Server pak dostává rozpoznaný anglický text.
+2. Pro první párování použij IPv4 PS5, osmibajtové PSN Account ID v Base64 pro sekundární účet a osmimístný kód z nabídky Remote Play v PS5. Použij už uložené párování NEXCAP Desktop, pokud pro stejnou IP funguje. Klíče z BlueStacks se automaticky neimportují. Po úspěšném párování v NEXCAP Desktop zůstávají v NEXCAP jen klíče Remote Play zašifrované přes Windows DPAPI pro aktuální účet Windows. Kód ani identifikátor účtu se neukládají.
+3. Klikni na **Ověřit PS5** pro samostatný test příjmu a dekódování videa. Poté vyber **Spustit překlad**. Při výpadku obrazu NEXCAP opakuje spojení s prodlevou 2 až 30 sekund. Během překladu aplikace kontroluje dostupnost LG a zobrazuje i poslední český titulek přímo v okně. Tlačítko **Do lišty** skryje okno. Překlad lze zastavit i z ikony v systémové liště.
 4. Hraj pod hlavním účtem na PS5. Současné hraní, chování ovladačů s připojeným sekundárním účtem, průběžné OCR ve hře a HDMI překryv patří do hardwarové přejímky.
 
 ## Sestavení
@@ -21,7 +21,8 @@ Ve Windows spusť `bash desktop/native/build-msys2.sh` v prostředí MSYS2 MINGW
 
 ```powershell
 python -m pip install -r requirements-build.txt
-python -m PyInstaller --noconfirm --windowed --name 'NEXCAP Desktop' --icon nexcap.ico --hidden-import pystray._win32 --add-data 'nexcap.ico:.' nexcap.py
+python prepare_model.py
+python -m PyInstaller --noconfirm --windowed --name 'NEXCAP Desktop' --icon nexcap.ico --hidden-import pystray._win32 --add-data 'nexcap.ico:.' --add-data 'translate-en-cs:translate-en-cs' --collect-all ctranslate2 --collect-data sacremoses --copy-metadata ctranslate2 --copy-metadata sacremoses --copy-metadata subword-nmt nexcap.py
 Copy-Item -Recurse build-native/runtime 'dist/NEXCAP Desktop/_internal/native'
 Copy-Item -Recurse build-native/notices 'dist/NEXCAP Desktop/Open-source notices'
 Copy-Item ../LICENSE 'dist/NEXCAP Desktop/LICENSE-PlayCaption.txt'
@@ -42,3 +43,5 @@ Instalátor je v `desktop/dist/NEXCAP-Desktop-PetrDevelop-Setup-x64.exe`.
 Android používá párování a relaci v `RemotePlay.kt` a `RemotePlayService.kt`, ML Kit v `Ctecka.kt` a `Prekladac.kt` a upravené knihovny Android NDK v `native/`. Desktop přímo kompiluje nativní libchiaki z pevně určeného commitu projektu chiaki-ng a používá jeho registrační a video callbacky. Část FFmpeg a Tesseract se instaluje samostatně. Android a LG mají vlastní existující úložiště a desktop je nepoužívá.
 
 NEXCAP Desktop a PlayCaption používají AGPL-3.0-or-later. Instalátor přikládá licenci PlayCaption a upstream licence a odkaz na zdrojový commit chiaki-ng (AGPL-3.0 s výjimkou pro OpenSSL). Zachovány jsou zásluhy původních autorů Chiaki a přispěvatelů chiaki-ng, nanopb, GF-Complete, Jerasure a curl.
+
+Instalátor obsahuje model Argos EN-CS 1.9.6 odvozený z OPUS-MT (CC BY 4.0). Původní atribuce a odkaz na zdroj jsou přibalené u modelu.

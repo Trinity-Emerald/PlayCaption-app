@@ -23,6 +23,7 @@ const context=vm.createContext({window,document,PalmServiceBridge:Bridge,XMLHttp
     setTimeout:()=>0,clearTimeout:()=>{},
     localStorage:{getItem:()=>input,setItem:(k,v)=>{input=v}},
     setInterval:f=>{tick=f;intervals.add(f);return f},clearInterval:f=>intervals.delete(f)});
+vm.runInContext("Array.from = undefined; Array.prototype.findIndex = undefined; String.prototype.trimEnd = undefined; String.prototype.normalize = undefined;", context);
 vm.runInContext(fs.readFileSync(__dirname+'/app/receiver-ui.js','utf8'),context);
 vm.runInContext(fs.readFileSync(__dirname+'/app/app.js','utf8'),context);
 const receiver=()=>bridges.filter(b=>b.uri.endsWith('/listen')).at(-1);

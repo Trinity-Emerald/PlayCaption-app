@@ -103,7 +103,15 @@ assert.equal(closed, 0, 'Přijímač se nesmí po 120 sekundách sám zavřít.'
 activityBridges().at(-1).onservicecallback('{"returnValue":false}');
 assert.match(elements.status.textContent, /LG odmítá/);
 listeners.webOSRelaunch();
-assert.equal(bridges[0].cancelled, true);
+assert.equal(bridges[0].cancelled, true, 'Po chybě se musí přihlásit nový odběr.');
+const live = receiverBridge();
+live.onservicecallback(JSON.stringify({returnValue:true, ready:true, udpPort:41989}));
+listeners.webOSRelaunch({detail:{resumeOverlay:true}});
+assert.equal(receiverBridge(), live, 'Obnovení aplikace nesmí odpojit živý odběr.');
+now += 11000; tick();
+now += 3000; tick();
+assert.equal(live.cancelled, true);
+assert.notEqual(receiverBridge(), live);
 assert.equal(timers.size, 1);
 receiverBridge().onservicecallback(JSON.stringify({ returnValue: false, errorText: 'EADDRINUSE' }));
 assert.match(elements.status.textContent, /EADDRINUSE/);
@@ -112,7 +120,6 @@ listeners.keydown({ keyCode: 461, preventDefault() {} });
 assert.equal(closed, 1);
 assert.equal(timers.size, 0);
 assert.equal(receiverBridge().cancelled, true);
-assert.equal(activityBridges().at(-1).cancelled, true);
 
 // Služba: discovery, validace, forwarding a ukončení UDP při zrušení posledního odběru.
 const handlers = {}, sockets = [], sent = [], replies = [], serviceTimers = new Map();
@@ -122,7 +129,7 @@ const dgram = { createSocket() {
     const s = new EventEmitter();
     s.bind = (port, address, fn) => { assert.equal(port, 41989); s.bound = fn; };
     s.setBroadcast = value => { assert.equal(value, true); };
-    s.send = (data, port, address, callback) => { sent.push({ data: data.toString(), port, address }); callback(null); };
+    s.send = (data, offset, length, port, address, callback) => { sent.push({ data: data.toString(), port, address }); callback(null); };
     s.close = () => { s.closed = true; };
     sockets.push(s); return s;
 } };

@@ -12,7 +12,7 @@ from threading import Event, Thread
 
 from PIL import Image, ImageDraw, ImageFont
 
-from capture import child, decoder_command, process_frames
+from capture import child, decoder_command, process_frames, translate
 from transport import PORT
 
 
@@ -55,7 +55,7 @@ def main():
             endpoint = f"http://127.0.0.1:{translator.server_port}/translate"
             stop = Event()
             pipeline = Thread(target=process_frames, args=(
-                decoder, stop, tesseract, endpoint, "127.0.0.1", print))
+                decoder, stop, tesseract, lambda text: translate(endpoint, text), "127.0.0.1", print))
             pipeline.start()
             try:
                 data, _ = tv.recvfrom(8192)
