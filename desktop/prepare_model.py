@@ -5,8 +5,6 @@ import hashlib
 from pathlib import Path
 import shutil
 import sys
-import tempfile
-from urllib.request import urlopen
 from zipfile import ZipFile
 
 URL = "https://argos-net.com/v1/translate-en_cs-1_9_6.argosmodel"
@@ -34,12 +32,6 @@ def stage(archive, target):
 
 
 if __name__ == "__main__":
-    destination = Path(__file__).resolve().parent / "translate-en-cs"
-    if len(sys.argv) == 2:
-        stage(Path(sys.argv[1]), destination)
-    else:
-        with tempfile.TemporaryDirectory() as directory:
-            archive = Path(directory) / "english-czech.argosmodel"
-            with urlopen(URL, timeout=60) as response, archive.open("wb") as output:
-                shutil.copyfileobj(response, output)
-            stage(archive, destination)
+    desktop = Path(__file__).resolve().parent
+    archive = Path(sys.argv[1]) if len(sys.argv) == 2 else desktop / "models" / "translate-en_cs-1_9_6.argosmodel"
+    stage(archive, desktop / "translate-en-cs")
