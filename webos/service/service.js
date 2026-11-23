@@ -135,11 +135,13 @@ service.register("listen", function (message) {
         return;
     }
     subscriptions[message.uniqueToken] = message;
-    message.respond(state());
     start();
+    message.respond(state());
 }, function (message) {
     delete subscriptions[message.uniqueToken];
-    if (Object.keys(subscriptions).length === 0) stop();
+    // Keep UDP alive while webOS retains this service process: switching HDMI can
+    // briefly detach the overlay subscription without stopping the receiver.
+    // The OS still owns the service lifecycle.
 });
 
 service.register("storyAck", function (message) {
@@ -151,3 +153,7 @@ service.register("storyAck", function (message) {
         message.respond({returnValue:!error});
     });
 });
+
+// Start listening as soon as the service is launched, independently of UI subscriptions.
+// This also makes direct PCQ1 probes possible while the overlay is being resumed.
+start();
