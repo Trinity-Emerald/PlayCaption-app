@@ -11,10 +11,10 @@ fi
 git -C build-native/chiaki fetch --depth 1 https://github.com/streetpea/chiaki-ng.git "$revision"
 git -C build-native/chiaki checkout --detach FETCH_HEAD
 git -C build-native/chiaki submodule update --init --depth 1 \
-    third-party/nanopb third-party/gf-complete third-party/jerasure third-party/curl
+    third-party/nanopb third-party/gf-complete third-party/jerasure
 
 cmake -S native -B build-native/cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-    -DCHIAKI_SOURCE="$(cygpath -am build-native/chiaki)"
+    -DCHIAKI_USE_SYSTEM_CURL=ON -DCHIAKI_SOURCE="$(cygpath -am build-native/chiaki)"
 cmake --build build-native/cmake --target nexcap-remote
 
 copy_runtime() {
@@ -38,7 +38,7 @@ cp build-native/cmake/nexcap-remote.exe build-native/runtime/
 copy_runtime build-native/runtime/nexcap-remote.exe
 cp build-native/chiaki/COPYING build-native/notices/COPYING-chiaki-ng
 cp -R build-native/chiaki/LICENSES build-native/notices/chiaki-ng-LICENSES
-for dependency in nanopb gf-complete jerasure curl; do
+for dependency in nanopb gf-complete jerasure; do
     mkdir -p "build-native/notices/$dependency"
     find "build-native/chiaki/third-party/$dependency" -maxdepth 1 -type f \
         \( -iname 'COPYING*' -o -iname 'LICENSE*' -o -iname 'COPYRIGHT*' \) \
