@@ -1454,10 +1454,30 @@ class MainActivity : Activity() {
         k2.addView(text(t("krok2"), 18f, Color.WHITE))
         val hledaniStav = text(t("hledam"), 17f, TEXT2)
         k2.addView(hledaniStav, odsazeni(top = 6))
+        // Ruční IP pomáhá emulátorům (např. BlueStacks), kde broadcast neprochází NAT.
+        val rucniIp = EditText(this).apply {
+            hint = "IP PS5 (např. 192.168.0.183)"
+            setText(udaje.ipKonzole ?: "192.168.0.183")
+            setSingleLine()
+            inputType = InputType.TYPE_CLASS_TEXT
+            setTextColor(Color.WHITE)
+            setHintTextColor(SEDA)
+            background = vyber(Color.parseColor("#26262E"), CERVENA)
+            setPadding(dp(18), dp(10), dp(18), dp(10))
+        }
+        k2.addView(rucniIp, obal(top = 8))
+        fun overIp(): String? {
+            val ip = rucniIp.text.toString().trim()
+            val casti = ip.split(".")
+            return ip.takeIf { casti.size == 4 && casti.all { c ->
+                c.isNotEmpty() && c.all(Char::isDigit) && c.toIntOrNull() in 0..255
+            } }
+        }
         fun hledej() {
             hledaniStav.text = t("hledam")
+            val zadanaIp = overIp()
             Thread {
-                val seznam = runCatching { HledacPS.hledej() }.getOrDefault(emptyList())
+                val seznam = runCatching { HledacPS.hledej(primaIp = zadanaIp) }.getOrDefault(emptyList())
                 runOnUiThread {
                     val ps = seznam.firstOrNull { it.typ == "PS5" } ?: seznam.firstOrNull()
                     nalezenaIp = ps?.ip
@@ -1467,6 +1487,16 @@ class MainActivity : Activity() {
             }.start()
         }
         k2.addView(tlacitko(t("hledatZnovu"), 18f) { hledej() }.apply { setPadding(dp(20), dp(10), dp(20), dp(10)) }, obal(top = 8))
+        k2.addView(tlacitkoZelene("Použít IP přímo") {
+            val ip = overIp()
+            if (ip == null) {
+                hledaniStav.text = "✘ Neplatná IPv4 adresa"
+            } else {
+                nalezenaIp = ip
+                hledaniStav.text = "✔ Vybraná PS5: $ip (bez ověření dostupnosti)"
+                hledaniStav.setTextColor(Color.parseColor("#7DFF9A"))
+            }
+        }, obal(top = 8))
         sloupec.addView(k2, odsazeni(bottom = 12))
 
         // 3) PIN
