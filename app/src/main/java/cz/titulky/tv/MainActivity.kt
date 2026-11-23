@@ -1470,7 +1470,7 @@ class MainActivity : Activity() {
             val ip = rucniIp.text.toString().trim()
             val casti = ip.split(".")
             return ip.takeIf { casti.size == 4 && casti.all { c ->
-                c.isNotEmpty() && c.all(Char::isDigit) && c.toIntOrNull() in 0..255
+                c.isNotEmpty() && c.all(Char::isDigit) && (c.toIntOrNull()?.let { it in 0..255 } == true)
             } }
         }
         fun hledej() {
