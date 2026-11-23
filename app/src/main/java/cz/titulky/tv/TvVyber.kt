@@ -52,6 +52,35 @@ class TvVyber(
     private fun lgPruvodce() = LgPruvodce(activity) { vyberTelevizi() }.ukaz()
     private fun samsungPruvodce() = SamsungPruvodce(activity) { vyberTelevizi() }.ukaz()
 
+    /** Ruční výběr pro emulátory, kde UDP broadcast nepřejde přes NAT. */
+    private fun rucniLg() {
+        val vstup = android.widget.EditText(activity).apply {
+            hint = "192.168.0.17"
+            setText("192.168.0.17")
+            setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setPadding(32, 22, 32, 22)
+        }
+        android.app.AlertDialog.Builder(activity)
+            .setTitle("LG webOS – ruční IP")
+            .setMessage("Zadej IP televize s běžícím přijímačem titulků.")
+            .setView(vstup)
+            .setPositiveButton("Použít IP") { _, _ ->
+                val ip = vstup.text.toString().trim()
+                val casti = ip.split(".")
+                if (casti.size != 4 || casti.any { c ->
+                        c.isEmpty() || !c.all(Char::isDigit) || c.toIntOrNull()?.let { it in 0..255 } != true
+                    }) {
+                    android.widget.Toast.makeText(activity, "Neplatná IP adresa", android.widget.Toast.LENGTH_LONG).show()
+                } else {
+                    televize.platforma = TvPlatforma.WEBOS
+                    pripoj(Propojeni.Televize("rucne-lg-$ip", "LG webOS ($ip)", ip), TvPlatforma.WEBOS)
+                }
+            }
+            .setNegativeButton("Zrušit", null)
+            .show()
+    }
+
     /** Najít televize s PlayCaption v síti a vybrat, kam posílat titulky. */
     private fun vyberTelevizi() {
         var zruseno = false
@@ -75,7 +104,7 @@ class TvVyber(
                 val ulozene = televize.seznam().filter { profil ->
                     vhodne.none { it.id == profil.id } && (platforma == TvPlatforma.NEZNAMA || profil.platforma == platforma)
                 }
-                val polozky = vhodne.map { "📺  " + it.jmeno } + ulozene.map { it.jmeno + " · " + t("tvOffline") } + t("tvJenTelefon")
+                val polozky = vhodne.map { "📺  " + it.jmeno } + ulozene.map { it.jmeno + " · " + t("tvOffline") } + "LG webOS – zadat IP ručně" + t("tvJenTelefon")
                 android.app.AlertDialog.Builder(activity)
                     .setTitle(if (vhodne.isEmpty()) t("tvNenalezenaPrijimac") else platformaText(platforma))
                     .setItems(polozky.toTypedArray()) { _, i ->
@@ -95,7 +124,8 @@ class TvVyber(
                             android.app.AlertDialog.Builder(activity).setTitle(profil.jmeno)
                                 .setMessage(platformaText(profil.platforma) + "\n" + t("tvOffline") + "\n" + t("tvVerzeNeznama"))
                                 .setPositiveButton("OK", null).show()
-                        } else lokalne()
+                        } else if (i == vhodne.size + ulozene.size) rucniLg()
+                        else lokalne()
                     }.show()
             }
         }
