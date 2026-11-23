@@ -18,7 +18,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * PlayCaption na telefonu: černá obrazovka, na ní velkým písmem překlad toho, co se ve hře říká.
+ * NEXCAP na telefonu: černá obrazovka, na ní velkým písmem překlad toho, co se ve hře říká.
  * Telefon stojí u televize, displej nezhasíná. Zavřením obrazovky se spojení s PS5 ukončí.
  */
 class TelefonActivity : Activity() {
@@ -160,7 +160,7 @@ class TelefonActivity : Activity() {
         if (!isFinishing && !pokracovatNaLg()) finish()
     }
 
-    /** PlayCaption je v pozadí (foťák, jiná aplikace…). */
+    /** NEXCAP je v pozadí (foťák, jiná aplikace…). */
     private var vPozadi = false
 
     /**
@@ -769,7 +769,7 @@ class TelefonActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(10), dp(14), dp(4))
             addView(ImageView(this@TelefonActivity).apply {
-                setImageResource(R.drawable.logo)
+                setImageResource(R.drawable.nexcap_icon)
                 adjustViewBounds = true
                 // podržet logo → záznam (pro hledání chyb)
                 setOnLongClickListener { Zaznam.ukaz(this@TelefonActivity); true }
