@@ -2,7 +2,7 @@ package cz.titulky.tv
 
 import android.content.Context
 
-/** Nastavení PlayCaption (jazyk, co překládat, jak zobrazovat). */
+/** Nastavení NEXCAP (jazyk, co překládat, jak zobrazovat). */
 class Nastaveni(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("gamelingo", Context.MODE_PRIVATE)
 
