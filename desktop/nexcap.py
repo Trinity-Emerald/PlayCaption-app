@@ -2,11 +2,14 @@
 """NEXCAP Desktop user interface for LG transport diagnostics."""
 
 from concurrent.futures import ThreadPoolExecutor
+import json
+import os
 from pathlib import Path
 from queue import Empty, SimpleQueue
 import socket
 import sys
 from threading import Event, Thread
+from tempfile import NamedTemporaryFile
 import tkinter as tk
 from tkinter import ttk
 
@@ -48,8 +51,52 @@ class App(tk.Tk):
         self.status = tk.StringVar(value="Připraveno")
         self.browser_url = tk.StringVar()
         self.browser_state = tk.StringVar(value="Vypnutý")
+        self.load_preferences()
         self.build_interface()
         self.after(125, self.read_events)
+
+    def preferences_path(self):
+        if sys.platform == "win32" and "LOCALAPPDATA" in os.environ:
+            return Path(os.environ["LOCALAPPDATA"]) / "PetrDevelop" / "NEXCAP" / "display-settings.json"
+        return None
+
+    def load_preferences(self):
+        path = self.preferences_path()
+        if path is None:
+            return
+        try:
+            settings = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        if not isinstance(settings, dict):
+            return
+        for name, field in (("console", self.console), ("televisions", self.ip)):
+            value = settings.get(name)
+            if isinstance(value, str):
+                field.set(value)
+        if isinstance(settings.get("ocr_region"), str) and settings["ocr_region"] in OCR_REGIONS:
+            self.region.set(settings["ocr_region"])
+
+    def save_preferences(self):
+        path = self.preferences_path()
+        if path is None:
+            return
+        temporary = None
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with NamedTemporaryFile(mode="w", dir=path.parent, delete=False, encoding="utf-8") as file:
+                temporary = Path(file.name)
+                json.dump({"console": self.console.get(), "televisions": self.ip.get(),
+                           "ocr_region": self.region.get()}, file, ensure_ascii=False)
+            temporary.replace(path)
+        except OSError:
+            pass
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     def build_interface(self):
         style = ttk.Style(self)
@@ -66,6 +113,15 @@ class App(tk.Tk):
                         font=(self.font, 11, "bold"))
         style.configure("TEntry", fieldbackground="#172b43", foreground="#ebf4ff",
                         insertcolor="#ebf4ff", bordercolor="#2a4561", padding=9)
+        style.map("TEntry", fieldbackground=[("readonly", "#172b43")])
+        style.configure("TCombobox", fieldbackground="#172b43", background="#1b324c",
+                        foreground="#ebf4ff", arrowcolor="#7be8ff", bordercolor="#2a4561",
+                        padding=6)
+        style.map("TCombobox", fieldbackground=[("readonly", "#172b43")],
+                  foreground=[("readonly", "#ebf4ff")])
+        self.option_add("*TCombobox*Listbox.background", "#172b43")
+        self.option_add("*TCombobox*Listbox.foreground", "#ebf4ff")
+        self.option_add("*TCombobox*Listbox.selectBackground", "#26516a")
         style.configure("TButton", background="#1b324c", bordercolor="#304c69",
                         foreground="#ebf4ff", padding=(13, 9), relief="flat")
         style.map("TButton", background=[("active", "#263f5b")],
@@ -381,6 +437,7 @@ class App(tk.Tk):
             self.stop_button.state(["disabled"])
 
     def close(self):
+        self.save_preferences()
         self.stop_stream.set()
         self.browser.stop()
         if self.tray:
