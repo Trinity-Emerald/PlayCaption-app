@@ -94,7 +94,7 @@ class SamsungPruvodce(private val activity: Activity, private val vyhledej: () -
             setPadding(dp(24), dp(24), dp(24), dp(20))
         }
         val hlavicka = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
-        hlavicka.addView(text("PlayCaption · Samsung", 22f).apply { typeface = Typeface.DEFAULT_BOLD },
+        hlavicka.addView(text("NEXCAP · Samsung", 22f).apply { typeface = Typeface.DEFAULT_BOLD },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         hlavicka.addView(tlacitko(t("lgZavrit")) { dialog.dismiss() })
         koren.addView(hlavicka)
