@@ -1,0 +1,38 @@
+name: Build NEXCAP LG receiver
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/bluestacks-manual-ps5
+    paths:
+      - 'webos/**'
+      - '.github/workflows/build-lg.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-lg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build and verify LG IPK
+        run: python3 webos/build.py
+      - name: Upload LG installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXCAP-PetrDevelop-LG-webOS
+          path: |
+            webos/dist/*.ipk
+            webos/dist/*.zip
+            webos/dist/receiver-manifest.json
+          if-no-files-found: error
+          retention-days: 30
