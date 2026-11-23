@@ -20,6 +20,7 @@ android {
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
     buildTypes {
+        debug { applicationIdSuffix = ".bluestacks" }
         release { isMinifyEnabled = false }
     }
     // kontrola "lint" při podepsaném sestavení padá na novém Javě (25) → vypnout, aplikaci neovlivní
