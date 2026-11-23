@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 const assert = require("node:assert/strict");
 const { execFile } = require("node:child_process");
+const dgram = require("node:dgram");
 const fs = require("node:fs");
 const { createRequire } = require("node:module");
 const path = require("node:path");
@@ -10,6 +11,8 @@ const vm = require("node:vm");
 const servicePath = path.resolve(__dirname, "../webos/service/service.js");
 const serviceRequire = createRequire(servicePath);
 const handlers = {};
+const sockets = [];
+const timers = [];
 function Service() {
     this.register = (name, request, cancel) => { handlers[name] = { request, cancel }; };
 }
@@ -17,10 +20,21 @@ function Service() {
 vm.runInNewContext(fs.readFileSync(servicePath, "utf8"), {
     require(name) {
         if (name === "webos-service") return Service;
+        if (name === "dgram") return { createSocket(...args) {
+            const socket = dgram.createSocket(...args);
+            sockets.push(socket);
+            return socket;
+        } };
         if (name === "os") return { hostname: () => "LG-test", networkInterfaces: () => ({}) };
         return serviceRequire(name);
     },
-    Buffer, console, setInterval, clearInterval,
+    Buffer, console,
+    setInterval(callback, delay) {
+        const timer = setInterval(callback, delay);
+        timers.push(timer);
+        return timer;
+    },
+    clearInterval,
 }, { filename: servicePath });
 
 async function main() {
@@ -53,6 +67,13 @@ async function main() {
     } finally {
         clearTimeout(watchdog);
         handlers.listen.cancel({ uniqueToken: "desktop-test" });
+        timers.forEach(clearInterval);
+        for (const socket of sockets) {
+            try { socket.close(); }
+            catch (error) {
+                if (error.code !== "ERR_SOCKET_DGRAM_NOT_RUNNING") throw error;
+            }
+        }
     }
 }
 

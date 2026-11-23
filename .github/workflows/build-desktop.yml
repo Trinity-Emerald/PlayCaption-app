@@ -23,6 +23,8 @@ jobs:
         run: |
           $env:PYTHON = 'python'
           node desktop/test_transport.cjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python desktop/test_tv_output.py
       - uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -46,7 +48,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python nexcap.py --self-test-translation
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python -m PyInstaller --noconfirm --windowed --name 'NEXCAP Desktop' --icon nexcap.ico --hidden-import pystray._win32 --add-data 'nexcap.ico:.' --add-data 'translate-en-cs:translate-en-cs' --collect-all ctranslate2 --collect-data sacremoses --copy-metadata ctranslate2 --copy-metadata sacremoses --copy-metadata subword-nmt nexcap.py
+          python -m PyInstaller --noconfirm --windowed --name 'NEXCAP Desktop' --icon nexcap.ico --hidden-import pystray._win32 --add-data 'nexcap.ico:.' --add-data 'nexcap.png:.' --add-data 'translate-en-cs:translate-en-cs' --collect-all ctranslate2 --collect-data sacremoses --copy-metadata ctranslate2 --copy-metadata sacremoses --copy-metadata subword-nmt nexcap.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $app = 'dist/NEXCAP Desktop'
           Copy-Item -Recurse build-native/runtime "$app/_internal/native"

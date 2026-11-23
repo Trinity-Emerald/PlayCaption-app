@@ -25,9 +25,13 @@ from transport import probe_receiver, send_subtitle
 
 WINDOW = getattr(sp, "CREATE_NO_WINDOW", 0)
 APP_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-WIDTH, HEIGHT = 1280, 256
-SIZE = WIDTH * HEIGHT
-PGM_HEADER = f"P5\n{WIDTH} {HEIGHT}\n255\n".encode("ascii")
+OCR_REGIONS = {
+    "Dialogy · dole": (1280, 256, 0, 440, 6),
+    "Herní telefon · vpravo": (544, 720, 736, 0, 11),
+    "Cíle a nápověda · nahoře": (1280, 320, 0, 0, 11),
+    "Celý obraz": (1280, 720, 0, 0, 11),
+}
+DEFAULT_REGION = next(iter(OCR_REGIONS))
 
 
 def console_address(value):
@@ -85,16 +89,19 @@ def translate(url, text):
     return translated.strip()
 
 
-def decoder_command(ffmpeg):
+def decoder_command(ffmpeg, region=DEFAULT_REGION):
+    width, height, left, top, _ = OCR_REGIONS[region]
     return [ffmpeg, "-hide_banner", "-loglevel", "error", "-threads", "1",
             "-probesize", "32768", "-analyzeduration", "100000", "-f", "h264", "-i", "pipe:0",
-            "-an", "-vf", f"fps=4,scale={WIDTH}:720,crop={WIDTH}:{HEIGHT}:0:440,format=gray",
+            "-an", "-vf", f"fps=4,scale=1280:720,crop={width}:{height}:{left}:{top},format=gray",
             "-threads", "1", "-pix_fmt", "gray", "-f", "rawvideo", "pipe:1"]
 
 
-def recognize(tesseract, frame):
-    result = sp.run([tesseract, "stdin", "stdout", "-l", "eng", "--psm", "6", "tsv"],
-                    input=PGM_HEADER + frame, capture_output=True, timeout=4,
+def recognize(tesseract, frame, region=DEFAULT_REGION):
+    width, height, _, _, psm = OCR_REGIONS[region]
+    header = f"P5\n{width} {height}\n255\n".encode("ascii")
+    result = sp.run([tesseract, "stdin", "stdout", "-l", "eng", "--psm", str(psm), "tsv"],
+                    input=header + frame, capture_output=True, timeout=4,
                     creationflags=WINDOW, check=False)
     if result.returncode:
         raise ValueError("Tesseract OCR selhal. Zkontroluj dostupnost modelu eng.")
@@ -125,8 +132,8 @@ def child(command, **kwargs):
                 pipe.close()
 
 
-def read_frames(pipe, frames):
-    while len(frame := pipe.read(SIZE)) == SIZE:
+def read_frames(pipe, frames, size):
+    while len(frame := pipe.read(size)) == size:
         try:
             frames.put_nowait(frame)
         except Full:
@@ -137,9 +144,15 @@ def read_frames(pipe, frames):
             frames.put_nowait(frame)
 
 
-def process_frames(decoder, stop, tesseract, translate_text, tv, status, *, first_only=False, failed=None, local_caption=None):
+def tv_addresses(value):
+    return tuple(dict.fromkeys(console_address(item) for item in value.split(",") if item.strip()))
+
+
+def process_frames(decoder, stop, tesseract, translate_text, tv, status, *, first_only=False, failed=None, local_caption=None, region=DEFAULT_REGION):
+    destinations = tv_addresses(tv) if isinstance(tv, str) else (tv or ())
     frames = Queue(maxsize=1)
-    reader = Thread(target=read_frames, args=(decoder.stdout, frames), daemon=True)
+    width, height, *_ = OCR_REGIONS[region]
+    reader = Thread(target=read_frames, args=(decoder.stdout, frames, width * height), daemon=True)
     reader.start()
     last_frame = time.monotonic()
     last_text = ""
@@ -160,7 +173,7 @@ def process_frames(decoder, stop, tesseract, translate_text, tv, status, *, firs
             first_frame = False
             status("Přijímám obraz PS5. Hledám anglický titulek…")
         last_frame = time.monotonic()
-        text = recognize(tesseract, frame)
+        text = recognize(tesseract, frame, region)
         if len(text) < 4 or SequenceMatcher(None, text, previous).ratio() < 0.85:
             previous = text
             continue
@@ -184,26 +197,29 @@ def process_frames(decoder, stop, tesseract, translate_text, tv, status, *, firs
             continue
         if local_caption is not None:
             local_caption(czech)
-        try:
-            send_subtitle(tv, czech)
-        except OSError as exc:
-            status(f"Překlad hotov, odeslání na LG selhalo ({exc}).")
-            last_sent = time.monotonic() - 1.5
-            continue
+        errors = []
+        for address in destinations:
+            try:
+                send_subtitle(address, czech)
+            except OSError:
+                errors.append(address)
         last_sent = time.monotonic()
-        status("Český titulek odeslán přes UDP.")
+        if errors:
+            status("Přeloženo · UDP nedostupné: " + ", ".join(errors))
+        else:
+            status("Český titulek odeslán přes UDP." if destinations else "Český titulek přeložen.")
 
 
 def test_console(address, stop, status):
     return stream_console(address, None, None, stop, status)
 
 
-def stream_console(address, tv, endpoint, stop, status, lg_status=None, local_caption=None):
+def stream_console(address, tv, endpoint, stop, status, lg_status=None, local_caption=None, region=DEFAULT_REGION):
     host = console_address(address)
     test_only = endpoint is None
     translate_text = None
     if not test_only:
-        tv = console_address(tv)
+        tv = tv_addresses(tv)
         if endpoint.strip():
             url = translation_url(endpoint)
             translate_text = lambda text: translate(url, text)
@@ -218,30 +234,35 @@ def stream_console(address, tv, endpoint, stop, status, lg_status=None, local_ca
     if not test_only and translate_text is None:
         status("Načítám místní překlad EN → CS…")
         translate_text = offline_translator()
-    if lg_status is None:
-        return run_sessions(host, tv, keys, helper, ffmpeg, tesseract, translate_text, stop, status, test_only, local_caption)
+    if lg_status is None or not tv:
+        return run_sessions(host, tv, keys, helper, ffmpeg, tesseract, translate_text, stop, status, test_only, local_caption, region)
     finished = Event()
 
     def monitor_lg():
         while not finished.is_set():
-            try:
-                name = probe_receiver(tv, timeout=0.7, attempts=1)
-                lg_status(f"{name} odpovídá na UDP.")
-            except OSError:
-                lg_status("LG neodpovídá. Opakuji kontrolu UDP.")
+            states = []
+            for address in tv:
+                if finished.is_set():
+                    return
+                try:
+                    probe_receiver(address, timeout=0.7, attempts=1)
+                    states.append(f"{address} dostupná")
+                except OSError:
+                    states.append(f"{address} bez odpovědi")
+            lg_status(" · ".join(states))
             finished.wait(3)
 
     monitor = Thread(target=monitor_lg, daemon=True)
     monitor.start()
     try:
-        return run_sessions(host, tv, keys, helper, ffmpeg, tesseract, translate_text, stop, status, test_only, local_caption)
+        return run_sessions(host, tv, keys, helper, ffmpeg, tesseract, translate_text, stop, status, test_only, local_caption, region)
     finally:
         finished.set()
         monitor.join()
         lg_status("Kontrola LG zastavena.")
 
 
-def run_sessions(host, tv, keys, helper, ffmpeg, tesseract, translate_text, stop, status, test_only, local_caption):
+def run_sessions(host, tv, keys, helper, ffmpeg, tesseract, translate_text, stop, status, test_only, local_caption, region):
     delay = 2
     while not stop.is_set():
         status(f"Připojuji se k PS5 na {host}…")
@@ -263,11 +284,11 @@ def run_sessions(host, tv, keys, helper, ffmpeg, tesseract, translate_text, stop
             try:
                 remote.stdin.write(keys)
                 remote.stdin.close()
-                with child(decoder_command(ffmpeg), stdin=remote.stdout, stdout=sp.PIPE,
+                with child(decoder_command(ffmpeg, region), stdin=remote.stdout, stdout=sp.PIPE,
                            stderr=sp.DEVNULL) as decoder:
                     remote.stdout.close()
                     if process_frames(decoder, stop, tesseract, translate_text, tv, status,
-                                      first_only=test_only, failed=pin_required, local_caption=local_caption):
+                                      first_only=test_only, failed=pin_required, local_caption=local_caption, region=region):
                         return "Test PS5 prošel. NEXCAP přijal a dekódoval snímek videa."
             except BrokenPipeError:
                 pass

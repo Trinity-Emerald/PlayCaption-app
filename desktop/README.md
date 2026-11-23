@@ -22,7 +22,7 @@ Ve Windows spusť `bash desktop/native/build-msys2.sh` v prostředí MSYS2 MINGW
 ```powershell
 python -m pip install -r requirements-build.txt
 python prepare_model.py
-python -m PyInstaller --noconfirm --windowed --name 'NEXCAP Desktop' --icon nexcap.ico --hidden-import pystray._win32 --add-data 'nexcap.ico:.' --add-data 'translate-en-cs:translate-en-cs' --collect-all ctranslate2 --collect-data sacremoses --copy-metadata ctranslate2 --copy-metadata sacremoses --copy-metadata subword-nmt nexcap.py
+python -m PyInstaller --noconfirm --windowed --name 'NEXCAP Desktop' --icon nexcap.ico --hidden-import pystray._win32 --add-data 'nexcap.ico:.' --add-data 'nexcap.png:.' --add-data 'translate-en-cs:translate-en-cs' --collect-all ctranslate2 --collect-data sacremoses --copy-metadata ctranslate2 --copy-metadata sacremoses --copy-metadata subword-nmt nexcap.py
 Copy-Item -Recurse build-native/runtime 'dist/NEXCAP Desktop/_internal/native'
 Copy-Item -Recurse build-native/notices 'dist/NEXCAP Desktop/Open-source notices'
 Copy-Item ../LICENSE 'dist/NEXCAP Desktop/LICENSE-PlayCaption.txt'
@@ -45,3 +45,15 @@ Android používá párování a relaci v `RemotePlay.kt` a `RemotePlayService.k
 NEXCAP Desktop a PlayCaption používají AGPL-3.0-or-later. Instalátor přikládá licenci PlayCaption a upstream licence a odkaz na zdrojový commit chiaki-ng (AGPL-3.0 s výjimkou pro OpenSSL). Zachovány jsou zásluhy původních autorů Chiaki a přispěvatelů chiaki-ng, nanopb, GF-Complete, Jerasure a curl.
 
 Instalátor obsahuje model Argos EN-CS 1.9.6 odvozený z OPUS-MT (CC BY 4.0). Původní atribuce a odkaz na zdroj jsou přibalené u modelu.
+
+## Současný výstup na více obrazovek
+
+V nabídce **Televize** můžeš nastavit jeden nebo oba výstupy:
+
+- **Přímý příjem LG** přijímá PCT1. U více kompatibilních přijímačů odděl jejich IPv4 adresy čárkou. Seznam se načte při spuštění překladu.
+- **Webový přijímač** zapni v NEXCAP a jeho adresu otevři na každé televizi, tabletu nebo HDMI zařízení s použitelným webovým prohlížečem. Všechna zařízení musí mít síťový přístup k PC. Stejná adresa funguje současně na více zařízeních. Pokud používáš jen web, pole LG může být prázdné. Pokud se stránka nenačte, zkontroluj IPv4 PC, izolaci klientů a povolení NEXCAP v bráně Windows pro soukromou síť. Adresa se vytvoří při každém zapnutí a titulky jsou dostupné každému, kdo ji zná a může se k PC připojit. Nepřesměrovávej port na internet.
+- **Kopírovat pro OBS** připraví adresu průhledného zdroje pro OBS Browser Source. Do OBS přidej hru ze samostatného zdroje, například z capture karty. Běžný prohlížeč na TV zobrazuje svou vlastní stránku a souběžné zobrazení přes HDMI závisí na schopnostech konkrétního zařízení. Pro samostatný monitor můžeš otevřít lokální náhled a použít F11.
+
+NEXCAP je nezávislý nástroj. Kompatibilita OCR s konkrétní hrou a skutečný HDMI překryv se ověřují na cílové sestavě. Při komerční distribuci dodrž licenci AGPL a podmínky distribuovaných závislostí a herních ochranných známek.
+
+V **Přehledu** zvol oblast OCR před spuštěním překladu. **Dialogy** čtou dolní pruh, **Herní telefon** pravou část a **Cíle a nápověda** horní část obrazu. Volba **Celý obraz** je širší, může ale zachytit další prvky herního rozhraní. Současně se zpracovává jedna oblast. Předvolby jsou obecné a vyžadují ověření v konkrétní hře.
