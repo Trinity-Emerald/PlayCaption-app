@@ -392,6 +392,7 @@
 
     function connectReceiver() {
         cancelReceiver();
+        receiverReady = false;
         receiverStartedAt = Date.now();
         lastReplyAt = 0;
         retryAt = 0;
