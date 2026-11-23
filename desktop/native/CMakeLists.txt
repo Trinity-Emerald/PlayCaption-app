@@ -10,6 +10,7 @@ foreach(option GUI CLI TESTS STEAM_SHORTCUT STEAMDECK_NATIVE SETSU SPEEX FFMPEG_
     set(CHIAKI_ENABLE_${option} OFF CACHE STRING "" FORCE)
 endforeach()
 set(CHIAKI_LIB_ENABLE_OPUS OFF CACHE BOOL "" FORCE)
+find_package(PkgConfig REQUIRED)
 add_subdirectory("${CHIAKI_SOURCE}" chiaki EXCLUDE_FROM_ALL)
 
 add_executable(nexcap-remote remote.c)

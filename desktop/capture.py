@@ -14,7 +14,7 @@ import re
 import shutil
 import subprocess as sp
 import sys
-from threading import Thread
+from threading import Event, Thread
 import time
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -136,7 +136,7 @@ def read_frames(pipe, frames):
             frames.put_nowait(frame)
 
 
-def process_frames(decoder, stop, tesseract, url, tv, status):
+def process_frames(decoder, stop, tesseract, url, tv, status, *, first_only=False, failed=None):
     frames = Queue(maxsize=1)
     reader = Thread(target=read_frames, args=(decoder.stdout, frames), daemon=True)
     reader.start()
@@ -145,13 +145,15 @@ def process_frames(decoder, stop, tesseract, url, tv, status):
     last_sent = 0.0
     previous = ""
     first_frame = True
-    while not stop.is_set():
+    while not stop.is_set() and not (failed and failed.is_set()):
         try:
             frame = frames.get(timeout=0.25)
         except Empty:
             if not reader.is_alive() or time.monotonic() - last_frame > 15:
                 return
             continue
+        if first_only:
+            return True
         if first_frame:
             first_frame = False
             status("Přijímám obraz PS5. Hledám anglický titulek…")
@@ -179,30 +181,38 @@ def process_frames(decoder, stop, tesseract, url, tv, status):
         status("Český titulek odeslán přes UDP.")
 
 
+def test_console(address, stop, status):
+    return stream_console(address, None, None, stop, status)
+
+
 def stream_console(address, tv, endpoint, stop, status):
     host = console_address(address)
-    tv = console_address(tv)
-    url = translation_url(endpoint)
+    test_only = endpoint is None
+    url = None
+    if not test_only:
+        tv = console_address(tv)
+        url = translation_url(endpoint)
     keys = load_keys(host)
     helper = helper_path()
     ffmpeg = shutil.which("ffmpeg")
     tesseract = shutil.which("tesseract")
-    if not ffmpeg or not tesseract:
-        raise ValueError("Přidej FFmpeg a Tesseract OCR s modelem eng do Windows PATH.")
+    if not ffmpeg:
+        raise ValueError("Přidej FFmpeg do Windows PATH.")
+    if not test_only and not tesseract:
+        raise ValueError("Přidej Tesseract OCR s modelem eng do Windows PATH.")
     delay = 2
     while not stop.is_set():
         status(f"Připojuji se k PS5 na {host}…")
         detail = []
-        login_pin_required = False
+        pin_required = Event()
         opened = time.monotonic()
         with child([helper, "stream", host], stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE) as remote:
             def diagnostics(pipe):
-                nonlocal login_pin_required
                 for line in pipe:
                     message = line.decode(errors="replace").strip()
                     detail[:] = [message]
                     if message == "console-login-pin-required":
-                        login_pin_required = True
+                        pin_required.set()
                     if message == "connected":
                         status("PS5 připojena. Čekám na video…")
 
@@ -214,21 +224,24 @@ def stream_console(address, tv, endpoint, stop, status):
                 with child(decoder_command(ffmpeg), stdin=remote.stdout, stdout=sp.PIPE,
                            stderr=sp.DEVNULL) as decoder:
                     remote.stdout.close()
-                    process_frames(decoder, stop, tesseract, url, tv, status)
+                    if process_frames(decoder, stop, tesseract, url, tv, status,
+                                      first_only=test_only, failed=pin_required):
+                        return "Test PS5 prošel. NEXCAP přijal a dekódoval snímek videa."
             except BrokenPipeError:
                 pass
             finally:
-                # Stop the producer before closing the diagnostic pipe.
                 if remote.poll() is None:
                     remote.terminate()
                 logger.join(timeout=2)
         if stop.is_set():
             break
-        if login_pin_required:
+        if pin_required.is_set():
             raise ValueError("PS5 vyžaduje přihlašovací PIN uživatele.")
         if time.monotonic() - opened >= 60:
             delay = 2
         reason = detail[-1] if detail else "video nedorazilo"
+        if test_only:
+            raise ValueError(f"Test videa PS5 selhal ({reason}).")
         status(f"Remote Play se přerušilo ({reason}). Další pokus za {delay} s.")
         stop.wait(delay)
         delay = min(30, delay * 2)

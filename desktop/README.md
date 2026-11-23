@@ -12,7 +12,7 @@ NEXCAP Desktop je rozpracovaná aplikace pro Windows 10/11 x64. Přijímá video
 
 1. Nainstaluj FFmpeg a Tesseract s anglickým modelem `eng` a přidej jejich spustitelné soubory do Windows PATH. NEXCAP očekává kompatibilní LibreTranslate server s překladem EN → CS a přístupem bez API klíče. Výchozí adresa je `http://localhost:5000/translate`. U vzdáleného serveru použij HTTPS. Server dostává rozpoznaný anglický text.
 2. Pro první párování použij IPv4 PS5, osmibajtové PSN Account ID v Base64 pro sekundární účet a osmimístný kód z nabídky Remote Play v PS5. Po úspěšném párování zůstávají v NEXCAP jen klíče Remote Play zašifrované přes Windows DPAPI pro aktuální účet Windows. Kód ani identifikátor účtu se neukládají.
-3. V NEXCAP vyber **Spustit překlad**. Při výpadku obrazu NEXCAP opakuje spojení s prodlevou 2 až 30 sekund. Tlačítko **Do lišty** skryje okno. Překlad lze zastavit i z ikony v systémové liště.
+3. Klikni na **Ověřit PS5** pro samostatný test příjmu a dekódování videa. Poté vyber **Spustit překlad**. Při výpadku obrazu NEXCAP opakuje spojení s prodlevou 2 až 30 sekund. Tlačítko **Do lišty** skryje okno. Překlad lze zastavit i z ikony v systémové liště.
 4. Hraj pod hlavním účtem na PS5. Současné hraní, chování ovladačů s připojeným sekundárním účtem, průběžné OCR ve hře a HDMI překryv patří do hardwarové přejímky.
 
 ## Sestavení
@@ -21,7 +21,7 @@ Ve Windows spusť `bash desktop/native/build-msys2.sh` v prostředí MSYS2 MINGW
 
 ```powershell
 python -m pip install -r requirements-build.txt
-python -m PyInstaller --noconfirm --windowed --name 'NEXCAP Desktop' --icon nexcap.ico --add-data 'nexcap.ico:.' nexcap.py
+python -m PyInstaller --noconfirm --windowed --name 'NEXCAP Desktop' --icon nexcap.ico --hidden-import pystray._win32 --add-data 'nexcap.ico:.' nexcap.py
 Copy-Item -Recurse build-native/runtime 'dist/NEXCAP Desktop/_internal/native'
 Copy-Item -Recurse build-native/notices 'dist/NEXCAP Desktop/Open-source notices'
 Copy-Item ../LICENSE 'dist/NEXCAP Desktop/LICENSE-PlayCaption.txt'

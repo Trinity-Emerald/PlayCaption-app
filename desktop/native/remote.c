@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// See the linked chiaki-ng source for its OpenSSL linking permission.
+// Additional permission under GNU AGPL section 7: you may link this file
+// with OpenSSL and distribute the resulting work under the AGPL.
 #include <chiaki/session.h>
 #include <stdio.h>
 #include <string.h>
@@ -60,12 +61,11 @@ static bool video(uint8_t *buffer, size_t size, int32_t lost, bool recovered, vo
 
 static void session_event(ChiakiEvent *event, void *user)
 {
-    ChiakiSession *session = user;
+    (void)user;
     if (event->type == CHIAKI_EVENT_CONNECTED) {
         fputs("connected\n", stderr);
     } else if (event->type == CHIAKI_EVENT_LOGIN_PIN_REQUEST) {
         fputs("console-login-pin-required\n", stderr);
-        chiaki_session_stop(session);
     } else if (event->type == CHIAKI_EVENT_QUIT) {
         fprintf(stderr, "quit: %s\n", chiaki_quit_reason_string(event->quit.reason));
     }
@@ -94,7 +94,7 @@ static int stream(const char *host, ChiakiLog *log)
     }
 
     chiaki_session_set_video_sample_cb(&session, video, NULL);
-    chiaki_session_set_event_cb(&session, session_event, &session);
+    chiaki_session_set_event_cb(&session, session_event, NULL);
     error = chiaki_session_start(&session);
     if (error == CHIAKI_ERR_SUCCESS)
         error = chiaki_session_join(&session);

@@ -2,9 +2,6 @@ name: Build NEXCAP Desktop for Windows
 
 on:
   workflow_dispatch:
-  push:
-    branches: [feature/bluestacks-manual-ps5]
-    paths: [.github/workflows/build-desktop.yml]
 
 permissions:
   contents: read
@@ -41,23 +38,36 @@ jobs:
         shell: pwsh
         run: |
           Set-Location desktop
+          python -c "from credentials import protect; keys = bytes(range(32)); assert protect(protect(keys, '127.0.0.1'), '127.0.0.1', decrypt=True) == keys"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python -m pip install -r requirements-build.txt
-          python -m PyInstaller --noconfirm --windowed --name 'NEXCAP Desktop' --icon nexcap.ico --add-data 'nexcap.ico:.' nexcap.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python -m PyInstaller --noconfirm --windowed --name 'NEXCAP Desktop' --icon nexcap.ico --hidden-import pystray._win32 --add-data 'nexcap.ico:.' nexcap.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $app = 'dist/NEXCAP Desktop'
           Copy-Item -Recurse build-native/runtime "$app/_internal/native"
           Copy-Item -Recurse build-native/notices "$app/Open-source notices"
           Copy-Item ../LICENSE "$app/LICENSE-PlayCaption.txt"
           Copy-Item README.md "$app/README.md"
-          $process = Start-Process "$app/NEXCAP Desktop.exe" -PassThru
+          $revision = (git rev-parse HEAD).Trim()
+          "https://github.com/Trinity-Emerald/PlayCaption-app/tree/$revision" |
+            Set-Content "$app/Open-source notices/NEXCAP-source.txt"
+          & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" installer.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $installed = Join-Path $env:RUNNER_TEMP 'NEXCAP-install-test'
+          $setup = Start-Process 'dist/NEXCAP-Desktop-PetrDevelop-Setup-x64.exe' -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR="{0}"' -f $installed)
+          ) -Wait -PassThru
+          if ($setup.ExitCode) { throw "Installer exited $($setup.ExitCode)" }
+          & "$installed/_internal/native/nexcap-remote.exe" --version
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $process = Start-Process "$installed/NEXCAP Desktop.exe" -PassThru
           try {
             Start-Sleep -Seconds 5
             if ($process.HasExited -or !$process.MainWindowHandle) { throw 'NEXCAP window did not open.' }
           } finally {
             if (!$process.HasExited) { Stop-Process -Id $process.Id }
           }
-          & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" installer.iss
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: NEXCAP-Desktop-PetrDevelop-Setup-x64

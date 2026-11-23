@@ -9,7 +9,7 @@ from threading import Event, Thread
 import tkinter as tk
 from tkinter import ttk
 
-from capture import pair_console, stream_console
+from capture import pair_console, stream_console, test_console
 from transport import probe_receiver, send_subtitle
 
 
@@ -83,6 +83,8 @@ class App(tk.Tk):
         controls.pack(fill="x", pady=(12, 0))
         self.pair_button = ttk.Button(controls, text="Spárovat PS5", command=self.pair)
         self.pair_button.pack(side="left", padx=(0, 8))
+        self.video_button = ttk.Button(controls, text="Ověřit PS5", command=self.probe_video)
+        self.video_button.pack(side="left", padx=(0, 8))
         self.start_button = ttk.Button(controls, text="Spustit překlad", command=self.start,
                                        style="Accent.TButton")
         self.start_button.pack(side="left", padx=(0, 8))
@@ -92,7 +94,7 @@ class App(tk.Tk):
         if sys.platform == "win32":
             ttk.Button(controls, text="Do lišty", command=self.hide_to_tray).pack(side="right")
         self.operation_buttons = (self.probe_button, self.send_button,
-                                  self.pair_button, self.start_button)
+                                  self.pair_button, self.video_button, self.start_button)
         self.after(125, self.read_events)
         status = ttk.Label(root, textvariable=self.status, style="Status.TLabel")
         status.pack(anchor="w", fill="x", pady=(15, 0))
@@ -117,6 +119,12 @@ class App(tk.Tk):
         self.run(pair_console, self.console.get(), account, pin,
                  pending="Páruji sekundární účet s PS5…")
 
+    def probe_video(self):
+        self.stop_stream.clear()
+        self.stop_button.state(["!disabled"])
+        self.run(test_console, self.console.get(), self.stop_stream, self.report,
+                 pending="Ověřuji obraz z PS5…")
+
     def start(self):
         self.stop_stream.clear()
         self.stop_button.state(["!disabled"])
@@ -138,8 +146,12 @@ class App(tk.Tk):
 
     def hide_to_tray(self):
         if self.tray is None:
-            import pystray
-            from PIL import Image
+            try:
+                import pystray
+                from PIL import Image
+            except ImportError:
+                self.status.set("Pro ikonu v liště jsou potřeba pystray a Pillow.")
+                return
 
             def action(callback):
                 return lambda icon, item: self.events.put((callback,))

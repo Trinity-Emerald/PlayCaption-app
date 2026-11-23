@@ -3,6 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 revision=43728af2e639fecb8a7af1cd68c29820a40de973
+rm -rf build-native/runtime build-native/notices
 mkdir -p build-native/{runtime,notices}
 if [[ ! -d build-native/chiaki/.git ]]; then
     git init -q build-native/chiaki
@@ -12,7 +13,7 @@ git -C build-native/chiaki checkout --detach FETCH_HEAD
 git -C build-native/chiaki submodule update --init --depth 1 \
     third-party/nanopb third-party/gf-complete third-party/jerasure third-party/curl
 
-cmake -S native -B build-native/cmake -G Ninja -DCMAKE_BUILD_TYPE=Release \
+cmake -S native -B build-native/cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DCHIAKI_SOURCE="$(cygpath -am build-native/chiaki)"
 cmake --build build-native/cmake --target nexcap-remote
 
