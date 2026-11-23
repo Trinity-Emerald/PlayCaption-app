@@ -250,7 +250,7 @@ class RemotePlayService : Service() {
                     val prevzit = intent?.getBooleanExtra(EXTRA_PREVZIT, false) == true
                     if (prevzit) chciPS5 = true
                     if (prevzit) {
-                        zapis("[Hotovo – hrát: připojuji (případné jiné zařízení s PlayCaption se odpojí)]")
+                        zapis("[Hotovo – hrát: připojuji (případné jiné zařízení s NEXCAP se odpojí)]")
                         neuspechu = 0
                         Predavani.posli()
                         ui.postDelayed(hlidac, 3000)
@@ -558,7 +558,7 @@ class RemotePlayService : Service() {
 
     private fun zastavProRestart() {
         val kde = if (telefon) "telefonu" else "televizi"
-        val duvod = "PS5 se opakovaně připojila bez obrazu. V nastavení aplikací na $kde dej PlayCaption → Vynutit ukončení a spusť ji znovu. Spárování zachovej."
+        val duvod = "PS5 se opakovaně připojila bez obrazu. V nastavení aplikací na $kde dej NEXCAP → Vynutit ukončení a spusť ji znovu. Spárování zachovej."
         automat = false; aktivni = false; chciPS5 = false
         ui.removeCallbacks(hlidac)
         ui.removeCallbacks(hlidacSpojeni)
@@ -1204,7 +1204,7 @@ class RemotePlayService : Service() {
     @Synchronized private fun zapis(radek: String) {
         if (radek.isBlank() || radek == posledniZapis) return
         posledniZapis = radek
-        if (radek.startsWith("[PS5 ") || radek.startsWith("[obraz:")) android.util.Log.i("PlayCaptionDiag", radek)
+        if (radek.startsWith("[PS5 ") || radek.startsWith("[obraz:")) android.util.Log.i("NEXCAPDiag", radek)
         runCatching {
             val f = File(filesDir, "titulky.log")
             if (f.length() > 300_000) f.writeText("")
