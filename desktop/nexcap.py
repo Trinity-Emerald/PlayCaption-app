@@ -2,11 +2,13 @@
 """NEXCAP Desktop user interface for LG transport diagnostics."""
 
 from concurrent.futures import ThreadPoolExecutor
+import ipaddress
 import json
 import os
 from pathlib import Path
 from queue import Empty, SimpleQueue
 import socket
+import shutil
 import sys
 from threading import Event, Thread
 from tempfile import NamedTemporaryFile
@@ -14,8 +16,16 @@ import tkinter as tk
 from tkinter import ttk
 
 from capture import DEFAULT_REGION, OCR_REGIONS, pair_console, stream_console, test_console, tv_addresses
-from transport import probe_receiver, send_subtitle
+from transport import discover_lg, probe_receiver, send_subtitle
 from tv_output import BrowserOutput
+
+
+TV_PROFILES = {
+    "LG · webOS": "Na TV otevři Webový prohlížeč. Pokud už máš doplněk PlayCaption, můžeš použít přímý příjem LG.",
+    "Samsung · Tizen": "Na TV otevři aplikaci Internet a zadej zobrazenou adresu včetně http://.",
+    "Sony / Google TV / Android TV": "Otevři nainstalovaný prohlížeč TV. Pokud chybí, použij telefon, tablet nebo zařízení s prohlížečem připojené přes HDMI.",
+    "Jiná TV / telefon / tablet": "Otevři adresu v prohlížeči zařízení ve stejné síti jako PC.",
+}
 
 
 class App(tk.Tk):
@@ -37,7 +47,12 @@ class App(tk.Tk):
         self.iconphoto(True, logo)
         self.logo = logo.subsample(5, 5)
         self.protocol("WM_DELETE_WINDOW", self.close)
-        self.ip = tk.StringVar(value="192.168.0.17")
+        self.ip = tk.StringVar()
+        self.tv_profile = tk.StringVar(value="Jiná TV / telefon / tablet")
+        self.tv_mode = tk.StringVar(value="web")
+        self.tv_help = tk.StringVar()
+        self.pc_address = tk.StringVar()
+        self.configured = False
         self.console = tk.StringVar()
         self.account = tk.StringVar()
         self.pin = tk.StringVar()
@@ -54,6 +69,7 @@ class App(tk.Tk):
         self.load_preferences()
         self.build_interface()
         self.after(125, self.read_events)
+        self.after(500, self.refresh_browser_state)
 
     def preferences_path(self):
         if sys.platform == "win32" and "LOCALAPPDATA" in os.environ:
@@ -70,12 +86,20 @@ class App(tk.Tk):
             return
         if not isinstance(settings, dict):
             return
+        self.configured = bool(settings.get("tv_profile"))
         for name, field in (("console", self.console), ("televisions", self.ip)):
             value = settings.get(name)
             if isinstance(value, str):
                 field.set(value)
         if isinstance(settings.get("ocr_region"), str) and settings["ocr_region"] in OCR_REGIONS:
             self.region.set(settings["ocr_region"])
+
+        profile = settings.get("tv_profile")
+        if isinstance(profile, str) and profile in TV_PROFILES:
+            self.tv_profile.set(profile)
+        # Preserve the direct target for existing installations created by 0.3.
+        if self.ip.get() and settings.get("tv_mode", "lg") == "lg":
+            self.tv_mode.set("lg")
 
     def save_preferences(self):
         path = self.preferences_path()
@@ -87,7 +111,8 @@ class App(tk.Tk):
             with NamedTemporaryFile(mode="w", dir=path.parent, delete=False, encoding="utf-8") as file:
                 temporary = Path(file.name)
                 json.dump({"console": self.console.get(), "televisions": self.ip.get(),
-                           "ocr_region": self.region.get()}, file, ensure_ascii=False)
+                           "ocr_region": self.region.get(), "tv_profile": self.tv_profile.get(),
+                           "tv_mode": self.tv_mode.get()}, file, ensure_ascii=False)
             temporary.replace(path)
         except OSError:
             pass
@@ -145,7 +170,7 @@ class App(tk.Tk):
         self.nav = {}
         for name, title, description, build in (
             ("Přehled", "Přehled", "České titulky při hraní z PS5", self.build_overview),
-            ("Televize", "Výstupy pro televize", "Připoj několik televizí v domácí síti.", self.build_televisions),
+            ("Televize", "Připojení televize", "Vyber značku a vyzkoušej připojení.", self.build_televisions),
             ("Nastavení", "Nastavení", "Párování PS5 a volba překladového modelu", self.build_settings),
         ):
             self.nav[name] = self.button(rail, name, lambda key=name: self.navigate(key),
@@ -159,9 +184,9 @@ class App(tk.Tk):
         if sys.platform == "win32":
             self.button(rail, "Do systémové lišty", self.hide_to_tray, style="Nav.TButton").pack(
                 side="bottom", fill="x")
-        self.operation_buttons = (self.probe_button, self.send_button,
+        self.operation_buttons = (self.probe_button, self.find_button, self.send_button,
                                   self.pair_button, self.video_button, self.start_button)
-        self.navigate("Přehled")
+        self.navigate("Přehled" if self.configured else "Televize")
 
     def navigate(self, name):
         for key, page in self.pages.items():
@@ -224,25 +249,51 @@ class App(tk.Tk):
         self.preview.lift()
 
     def build_televisions(self, page):
-        web = self.card(page, "WEBOVÝ PŘIJÍMAČ")
-        web.pack(fill="x", pady=(0, 12))
-        ttk.Label(web, text="Stejnou adresu otevři v prohlížeči každé TV. Funguje také v OBS.",
-                  style="Card.TLabel", wraplength=530).pack(anchor="w")
+        device = self.card(page, "ZNAČKA NEBO SYSTÉM TV")
+        device.pack(fill="x", pady=(0, 12))
+        selector = ttk.Combobox(device, textvariable=self.tv_profile, state="readonly",
+                                values=tuple(TV_PROFILES))
+        selector.pack(fill="x")
+        selector.bind("<<ComboboxSelected>>", self.select_profile)
+        ttk.Label(device, textvariable=self.tv_help, style="Card.TLabel", wraplength=550).pack(
+            anchor="w", pady=(7, 0))
+        modes = ttk.Frame(page)
+        modes.pack(fill="x", pady=(0, 10))
+        ttk.Radiobutton(modes, text="Prohlížeč TV (doporučeno)", variable=self.tv_mode, value="web",
+                        command=self.show_tv_mode).pack(side="left")
+        self.direct_radio = ttk.Radiobutton(modes, text="Přímý příjem LG", variable=self.tv_mode,
+                                           value="lg", command=self.show_tv_mode)
+        self.direct_radio.pack(side="left", padx=12)
+
+        self.web_card = web = self.card(page, "WEBOVÝ PŘIJÍMAČ")
+        self.lg_card = lan = self.card(page, "PŘÍMÝ PŘÍJEM LG")
         line = ttk.Frame(web, style="Card.TFrame")
-        line.pack(fill="x", pady=(8, 0))
+        line.pack(fill="x")
         ttk.Entry(line, textvariable=self.browser_url, state="readonly").pack(side="left", fill="x", expand=True)
-        self.web_button = self.button(line, "Zapnout", self.toggle_browser, style="Accent.TButton")
+        self.web_button = self.button(line, "Připravit adresu", self.toggle_browser, style="Accent.TButton")
         self.web_button.pack(side="left", padx=(8, 0))
         self.button(line, "Kopírovat", self.copy_url).pack(side="left", padx=(8, 0))
+        ttk.Label(web, textvariable=self.browser_state, style="Card.TLabel", wraplength=530).pack(
+            anchor="w", pady=(9, 8))
         options = ttk.Frame(web, style="Card.TFrame")
-        options.pack(fill="x", pady=(6, 0))
-        ttk.Label(options, textvariable=self.browser_state, style="Card.TLabel").pack(side="left")
+        options.pack(fill="x")
+        self.button(options, "Zobrazit zkušební titulek", self.test_web).pack(side="left")
         self.button(options, "Kopírovat pro OBS", lambda: self.copy_url(overlay=True)).pack(side="right")
-        lan = self.card(page, "PŘÍMÝ PŘÍJEM LG")
-        lan.pack(fill="both", expand=True)
-        ttk.Label(lan, text="IPv4 adresy odděl čárkou. Pokud používáš webový příjem, pole může zůstat prázdné.",
+        manual = ttk.Frame(web, style="Card.TFrame")
+        manual.pack(fill="x", pady=(11, 3))
+        ttk.Label(manual, text="Náhradní IPv4 počítače", style="Card.TLabel").pack(side="left", padx=(0, 8))
+        ttk.Entry(manual, textvariable=self.pc_address, width=17).pack(side="left", padx=(0, 8))
+        self.button(manual, "Použít adresu", self.apply_pc_address).pack(side="left")
+        ttk.Label(web, text="Pokud se stránka neotevře, ověř stejnou Wi-Fi a povol NEXCAP v bráně Windows pro soukromou síť.",
+                  style="Card.TLabel", wraplength=530).pack(anchor="w", pady=(5, 0))
+
+        ttk.Label(lan, text="Na televizoru spusť doplněk PlayCaption LG, potom vyhledej přijímač nebo zadej jeho IPv4.",
                   style="Card.TLabel", wraplength=530).pack(anchor="w")
-        ttk.Entry(lan, textvariable=self.ip).pack(fill="x", pady=(7, 9))
+        entry = ttk.Frame(lan, style="Card.TFrame")
+        entry.pack(fill="x", pady=(8, 9))
+        ttk.Entry(entry, textvariable=self.ip).pack(side="left", fill="x", expand=True)
+        self.find_button = self.button(entry, "Vyhledat LG", self.find_lg, style="Accent.TButton")
+        self.find_button.pack(side="left", padx=(8, 0))
         self.subtitle = tk.Text(lan, height=2, bg="#172b43", fg="#ebf4ff",
                                 insertbackground="#ebf4ff", relief="flat",
                                 font=(self.font, 11), padx=10, pady=6, wrap="word")
@@ -250,11 +301,66 @@ class App(tk.Tk):
         self.subtitle.pack(fill="x")
         buttons = ttk.Frame(lan, style="Card.TFrame")
         buttons.pack(fill="x", pady=(8, 0))
-        self.probe_button = self.button(buttons, "Ověřit LG", self.probe)
+        self.probe_button = self.button(buttons, "Ověřit IP", self.probe)
         self.probe_button.pack(side="left", padx=(0, 8))
         self.send_button = self.button(buttons, "Odeslat zkušební titulek", self.send)
         self.send_button.pack(side="left")
         ttk.Label(lan, textvariable=self.lg, style="Card.TLabel", wraplength=530).pack(anchor="w", pady=(7, 0))
+        self.show_tv_mode()
+
+    def select_profile(self, _event=None):
+        self.tv_mode.set("web")
+        self.show_tv_mode()
+
+    def show_tv_mode(self):
+        self.tv_help.set(TV_PROFILES[self.tv_profile.get()])
+        direct_available = self.tv_profile.get() == "LG · webOS" or self.tv_mode.get() == "lg"
+        self.direct_radio.state(["!disabled" if direct_available else "disabled"])
+        self.web_card.pack_forget()
+        self.lg_card.pack_forget()
+        card = self.lg_card if self.tv_mode.get() == "lg" else self.web_card
+        card.pack(fill="x")
+
+    def refresh_browser_state(self):
+        if self.browser.server:
+            if self.browser.viewer_connected():
+                self.browser_state.set("Prohlížeč je připojený.")
+            elif not self.browser_url.get():
+                self.browser_state.set("Zadej IPv4 počítače ručně.")
+            else:
+                self.browser_state.set("Čekám, až otevřeš adresu v prohlížeči TV.")
+        self.after(500, self.refresh_browser_state)
+
+    def apply_pc_address(self):
+        try:
+            address = ipaddress.IPv4Address(self.pc_address.get().strip())
+            if address.is_unspecified or address.is_multicast or address.is_reserved:
+                raise ValueError()
+        except ValueError:
+            self.browser_state.set("Zadej platnou IPv4 adresu tohoto počítače.")
+            return
+        if not self.browser.server:
+            self.start_browser(str(address))
+        else:
+            self.browser_url.set(self.browser.url(str(address)))
+
+    def test_web(self):
+        if not self.browser.server:
+            self.start_browser()
+        if self.browser.server:
+            self.browser.publish("Vidíš tento titulek? NEXCAP je připojený.", duration=10)
+
+    def find_lg(self):
+        def scan():
+            answers = discover_lg()
+            if len(answers) == 1:
+                address, name = next(iter(answers.items()))
+                self.events.put((self.ip.set, address))
+                return f"{name} nalezen na {address}. Můžeš odeslat test."
+            if answers:
+                return "Nalezené adresy: " + ", ".join(sorted(answers)) + ". Zadej adresu své TV."
+            return "Přijímač se neozval. Zadej IPv4 ručně nebo použij prohlížeč TV."
+        self.run(scan, target=self.lg, pending="Hledám přijímač LG v domácí síti…")
 
     def build_settings(self, page):
         settings = ttk.Frame(page)
@@ -278,33 +384,57 @@ class App(tk.Tk):
         self.video_button = self.button(actions, "Ověřit obraz", self.probe_video)
         self.video_button.pack(side="left", padx=(0, 8))
         ttk.Label(page, textvariable=self.status, style="Muted.TLabel", wraplength=530).pack(anchor="w", pady=15)
+        tools = self.card(page, "PŘÍPRAVA WINDOWS")
+        tools.pack(fill="x")
+        self.tools_state = tk.StringVar()
+        ttk.Label(tools, textvariable=self.tools_state, style="Card.TLabel", wraplength=530).pack(anchor="w")
+        row = ttk.Frame(tools, style="Card.TFrame")
+        row.pack(fill="x", pady=(8, 0))
+        self.button(row, "Zkontrolovat nástroje", self.check_tools).pack(side="left", padx=(0, 8))
+        self.button(row, "Kopírovat instalační příkazy", self.copy_install_commands).pack(side="left")
+        self.check_tools()
+
+    def check_tools(self):
+        missing = [name for name in ("ffmpeg", "tesseract") if shutil.which(name) is None]
+        if missing:
+            self.tools_state.set("Ve Windows PATH chybí: " + ", ".join(missing) +
+                                 ". Zkopíruj příkazy do PowerShellu a po instalaci znovu otevři NEXCAP.")
+        else:
+            self.tools_state.set("FFmpeg a Tesseract jsou v PATH. Pro OCR potřebuje Tesseract jazyk eng.")
+
+    def copy_install_commands(self):
+        self.clipboard_clear()
+        self.clipboard_append("winget install --id Gyan.FFmpeg -e\n"
+                              "winget install --id UB-Mannheim.TesseractOCR -e")
+        self.tools_state.set("Příkazy zkopírovány. Spusť je v PowerShellu a znovu otevři NEXCAP.")
 
     def toggle_browser(self):
         if self.browser.server:
             self.browser.stop()
             self.browser_url.set("")
             self.browser_state.set("Webový přijímač vypnutý")
-            self.web_button.configure(text="Zapnout")
+            self.web_button.configure(text="Připravit adresu")
             return
+        self.start_browser()
+
+    def start_browser(self, address=None):
         try:
             self.browser.start()
         except OSError as error:
             self.browser_state.set(f"Webový přijímač: {error}")
             return
-        address = "127.0.0.1"
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
-            try:
-                destinations = tv_addresses(self.ip.get())
-            except ValueError:
-                destinations = ()
-            try:
-                connection.connect((destinations[0] if destinations else "192.0.2.1", 9))
-                address = connection.getsockname()[0]
-            except OSError:
-                pass
-        self.browser_url.set(self.browser.url(address))
-        self.browser_state.set("Webový přijímač běží")
+        if address is None:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
+                try:
+                    connection.connect(("192.0.2.1", 9))
+                    address = connection.getsockname()[0]
+                except OSError:
+                    pass
+        if address:
+            self.pc_address.set(address)
+            self.browser_url.set(self.browser.url(address))
         self.web_button.configure(text="Vypnout")
+        self.browser_state.set("Čekám na připojení prohlížeče TV.")
 
     def copy_url(self, *, overlay=False):
         if self.browser_url.get():
@@ -352,9 +482,17 @@ class App(tk.Tk):
                  pending="Ověřuji obraz z PS5…")
 
     def start(self):
+        if not self.console.get().strip():
+            self.status.set("Vyplň adresu PS5 a ověř párování.")
+            self.navigate("Nastavení")
+            return
+        if self.tv_mode.get() == "lg" and not self.ip.get().strip():
+            self.lg.set("Vyhledej LG nebo zadej její IPv4 adresu.")
+            self.navigate("Televize")
+            return
         self.stop_stream.clear()
         self.stop_button.state(["!disabled"])
-        self.run(stream_console, self.console.get(), self.ip.get(), self.endpoint.get(),
+        self.run(stream_console, self.console.get(), self.ip.get() if self.tv_mode.get() == "lg" else "", self.endpoint.get(),
                  self.stop_stream, self.report, self.report_lg, self.report_caption, self.region.get(), pending="Spouštím Remote Play…")
 
     def report(self, message):

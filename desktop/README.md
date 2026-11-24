@@ -57,3 +57,9 @@ V nabídce **Televize** můžeš nastavit jeden nebo oba výstupy:
 NEXCAP je nezávislý nástroj. Kompatibilita OCR s konkrétní hrou a skutečný HDMI překryv se ověřují na cílové sestavě. Při komerční distribuci dodrž licenci AGPL a podmínky distribuovaných závislostí a herních ochranných známek.
 
 V **Přehledu** zvol oblast OCR před spuštěním překladu. **Dialogy** čtou dolní pruh, **Herní telefon** pravou část a **Cíle a nápověda** horní část obrazu. Volba **Celý obraz** je širší, může ale zachytit další prvky herního rozhraní. Současně se zpracovává jedna oblast. Předvolby jsou obecné a vyžadují ověření v konkrétní hře.
+
+## První připojení televize
+
+Nová instalace otevře sekci **Televize**. Vyber LG, Samsung, Sony / Google TV / Android TV nebo jiné zařízení. Pro webový režim připrav adresu, otevři ji na TV a zobraz zkušební titulek. NEXCAP pozná, že prohlížeč začal číst titulky. Pokud PC vybere špatné síťové rozhraní, přepiš **Náhradní IPv4 počítače**. Adresu správného adaptéru najdeš ve Windows příkazem `ipconfig`.
+
+U LG s nainstalovaným doplňkem PlayCaption zvol **Přímý příjem LG**. Ze stejné sítě můžeš přijímač vyhledat a následně ověřit zkušebním titulkem. Pokud síť blokuje broadcast, zadej IPv4 televize ručně. Volba značky zobrazuje návod příslušné platformy. U Samsung a Sony se v tomto průvodci používá prohlížeč, pokud ho konkrétní model nabízí a podporuje potřebné webové funkce. Webová stránka sama neskládá titulky přes vstup HDMI.

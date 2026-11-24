@@ -54,6 +54,7 @@ class BrowserOutput:
         self.text = ""
         self.expires = 0.0
         self.lock = threading.Lock()
+        self.last_viewer = 0.0
 
     def publish(self, text, duration=6):
         with self.lock:
@@ -64,10 +65,15 @@ class BrowserOutput:
         with self.lock:
             return self.text if time.monotonic() < self.expires else ""
 
+    def viewer_connected(self):
+        with self.lock:
+            return self.last_viewer > 0 and time.monotonic() - self.last_viewer < 5
+
     def start(self, host="0.0.0.0", port=0):
         if self.server:
             return
-        self.token = secrets.token_urlsafe(18)
+        self.token = secrets.token_hex(8)
+        self.last_viewer = 0.0
         route = "/" + self.token
         output = self
 
@@ -82,6 +88,9 @@ class BrowserOutput:
                 if path == route:
                     content, kind = PAGE, "text/html; charset=utf-8"
                 elif path == route + "/caption":
+                    with output.lock:
+                        if output.token == route[1:]:
+                            output.last_viewer = time.monotonic()
                     content = json.dumps({"text": output.current()}).encode("utf-8")
                     kind = "application/json"
                 else:
@@ -107,4 +116,7 @@ class BrowserOutput:
             self.server.shutdown()
             self.server.server_close()
             self.server = None
+        with self.lock:
+            self.token = ""
+            self.last_viewer = 0.0
         self.publish("")

@@ -1,5 +1,5 @@
-#define AppName "NEXCAP Desktop"
-#define AppVersion "0.3.0"
+﻿#define AppName "NEXCAP Desktop"
+#define AppVersion "0.4.0"
 
 [Setup]
 AppId={{A582AC7A-B67F-4B51-ACBA-210EB286CB30}
@@ -20,8 +20,18 @@ OutputDir=dist
 OutputBaseFilename=NEXCAP-Desktop-PetrDevelop-Setup-x64
 UninstallDisplayIcon={app}\NEXCAP Desktop.exe
 
+[Languages]
+Name: "czech"; MessagesFile: "compiler:Languages\Czech.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "Vytvořit zástupce na ploše"
+
 [Files]
 Source: "dist\NEXCAP Desktop\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
 Name: "{autoprograms}\NEXCAP Desktop"; Filename: "{app}\NEXCAP Desktop.exe"
+Name: "{userdesktop}\NEXCAP Desktop"; Filename: "{app}\NEXCAP Desktop.exe"; Tasks: desktopicon
+
+[Run]
+Filename: "{app}\NEXCAP Desktop.exe"; Description: "Spustit NEXCAP Desktop"; Flags: nowait postinstall skipifsilent

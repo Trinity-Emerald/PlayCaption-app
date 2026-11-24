@@ -50,6 +50,35 @@ def send_subtitle(ip: str, text: str, duration_ms: int = 6000) -> None:
         sock.sendto(packet, endpoint)
 
 
+def _receiver_name(packet, nonce):
+    fields = packet.decode("utf-8", errors="replace").split("\t")
+    if (len(fields) == 5 and fields[0] == "PLAYCAPTION_TV"
+            and re.fullmatch(r"lg-[0-9a-f]{12}", fields[1])
+            and fields[2] and fields[4] == nonce):
+        return fields[2]
+    return None
+
+
+def discover_lg(timeout=1.4):
+    nonce = secrets.token_hex(16)
+    query = f"PLAYCAPTION_FIND\t{nonce}".encode("ascii")
+    results = {}
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.sendto(query, ("255.255.255.255", PORT))
+        deadline = time.monotonic() + timeout
+        while (remaining := deadline - time.monotonic()) > 0:
+            sock.settimeout(remaining)
+            try:
+                packet, (address, port) = sock.recvfrom(8192)
+            except TimeoutError:
+                break
+            name = _receiver_name(packet, nonce)
+            if port == PORT and name:
+                results[address] = name
+    return results
+
+
 def probe_receiver(ip: str, timeout: float = 1.0, attempts: int = 3) -> str:
     endpoint = _endpoint(ip)
     nonce = secrets.token_hex(16)
@@ -62,11 +91,10 @@ def probe_receiver(ip: str, timeout: float = 1.0, attempts: int = 3) -> str:
             while (remaining := deadline - time.monotonic()) > 0:
                 sock.settimeout(remaining)
                 try:
-                    fields = sock.recv(8192).decode("utf-8", errors="replace").split("\t")
+                    packet = sock.recv(8192)
                 except (TimeoutError, ConnectionResetError, ConnectionRefusedError):
                     break
-                if (len(fields) == 5 and fields[0] == "PLAYCAPTION_TV"
-                        and re.fullmatch(r"lg-[0-9a-f]{12}", fields[1])
-                        and fields[2] and fields[4] == nonce):
-                    return fields[2]
+                name = _receiver_name(packet, nonce)
+                if name:
+                    return name
     raise TimeoutError("LG přijímač neodpověděl na UDP portu 41989.")
