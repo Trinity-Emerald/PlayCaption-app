@@ -15,7 +15,7 @@ from tempfile import NamedTemporaryFile
 import tkinter as tk
 from tkinter import ttk
 
-from capture import DEFAULT_REGION, OCR_REGIONS, pair_console, stream_console, test_console, tv_addresses
+from capture import DEFAULT_REGION, MULTI_REGION, REGION_OPTIONS, pair_console, stream_console, test_console, tv_addresses
 from transport import discover_lg, probe_receiver, send_subtitle
 from tv_output import BrowserOutput
 
@@ -62,6 +62,7 @@ class App(tk.Tk):
         self.caption = tk.StringVar()
         self.dashboard_caption = tk.StringVar(value="Čekám na první český titulek…")
         self.caption_timeout = None
+        self.showing_panels = False
         self.lg = tk.StringVar(value="Čeká na ověření")
         self.status = tk.StringVar(value="Připraveno")
         self.browser_url = tk.StringVar()
@@ -91,7 +92,7 @@ class App(tk.Tk):
             value = settings.get(name)
             if isinstance(value, str):
                 field.set(value)
-        if isinstance(settings.get("ocr_region"), str) and settings["ocr_region"] in OCR_REGIONS:
+        if isinstance(settings.get("ocr_region"), str) and settings["ocr_region"] in REGION_OPTIONS:
             self.region.set(settings["ocr_region"])
 
         profile = settings.get("tv_profile")
@@ -216,7 +217,7 @@ class App(tk.Tk):
         region.pack(fill="x", pady=(0, 14))
         ttk.Label(region, text="Oblast OCR").pack(side="left", padx=(0, 9))
         ttk.Combobox(region, textvariable=self.region, state="readonly", width=28,
-                     values=tuple(OCR_REGIONS)).pack(side="left")
+                     values=REGION_OPTIONS).pack(side="left")
         ttk.Label(region, text="Použije se při spuštění překladu", style="Muted.TLabel").pack(
             side="left", padx=(10, 0))
         status = self.card(page, "PS5 A PŘEKLAD")
@@ -322,6 +323,8 @@ class App(tk.Tk):
         card.pack(fill="x")
 
     def refresh_browser_state(self):
+        if self.showing_panels:
+            self.update_panel_preview()
         if self.browser.server:
             if self.browser.viewer_connected():
                 self.browser_state.set("Prohlížeč je připojený.")
@@ -348,7 +351,13 @@ class App(tk.Tk):
         if not self.browser.server:
             self.start_browser()
         if self.browser.server:
-            self.browser.publish("Vidíš tento titulek? NEXCAP je připojený.", duration=10)
+            if self.region.get() == MULTI_REGION:
+                self.browser.publish("")
+                self.browser.publish_panels({"dialog": "Dialog: Pojď za mnou.",
+                                             "phone": "Zpráva: Jsem na místě.",
+                                             "mission": "Cíl: Najdi vozidlo."}, duration=15)
+            else:
+                self.browser.publish("Vidíš tento titulek? NEXCAP je připojený.", duration=10)
 
     def find_lg(self):
         def scan():
@@ -507,10 +516,24 @@ class App(tk.Tk):
     def show_caption(self, message):
         if self.caption_timeout is not None:
             self.after_cancel(self.caption_timeout)
+            self.caption_timeout = None
+        self.showing_panels = isinstance(message, dict)
+        if self.showing_panels:
+            self.browser.publish_panels(message)
+            self.update_panel_preview()
+            return
         self.caption.set(message)
         self.dashboard_caption.set(message or "Čekám na první český titulek…")
         self.browser.publish(message)
         self.caption_timeout = self.after(6000, self.clear_caption) if message else None
+
+    def update_panel_preview(self):
+        panels = self.browser.current_panels()
+        text = "\n\n".join(f"{title}: {panels[key]}" for key, title in
+                            (("dialog", "Dialog"), ("phone", "Telefon"), ("mission", "Cíl"))
+                            if key in panels)
+        self.caption.set(text)
+        self.dashboard_caption.set(text or "Čekám na první český titulek…")
 
     def clear_caption(self):
         self.caption_timeout = None

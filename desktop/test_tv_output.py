@@ -37,6 +37,19 @@ class TelevisionOutputTest(unittest.TestCase):
             urlopen(url.rsplit("/", 1)[0] + "/caption", timeout=2)
         self.assertEqual(missing.exception.code, 404)
 
+    def test_panels_expire_separately_and_keep_legacy_dialog(self):
+        output = BrowserOutput()
+        output.start("127.0.0.1")
+        self.addCleanup(output.stop)
+        output.publish_panels({"dialog": "Dialog", "mission": "Cíl"})
+        output.publish_panels({"phone": "Zpráva"}, duration=0)
+        with urlopen(output.url("127.0.0.1") + "/caption", timeout=2) as response:
+            self.assertEqual(json.load(response), {
+                "text": "Dialog", "panels": {"dialog": "Dialog", "mission": "Cíl"}
+            })
+        output.publish("")
+        self.assertEqual(output.current_panels(), {})
+
     def test_discovery_accepts_only_current_reply_from_lg_port(self):
         valid = "PLAYCAPTION_TV\tlg-aabbccddeeff\tPřijímač\t0\t"
         with patch("transport.secrets.token_hex", return_value="a" * 32), patch("transport.socket.socket") as factory:

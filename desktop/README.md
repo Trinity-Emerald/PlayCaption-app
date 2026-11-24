@@ -63,3 +63,12 @@ V **Přehledu** zvol oblast OCR před spuštěním překladu. **Dialogy** čtou 
 Nová instalace otevře sekci **Televize**. Vyber LG, Samsung, Sony / Google TV / Android TV nebo jiné zařízení. Pro webový režim připrav adresu, otevři ji na TV a zobraz zkušební titulek. NEXCAP pozná, že prohlížeč začal číst titulky. Pokud PC vybere špatné síťové rozhraní, přepiš **Náhradní IPv4 počítače**. Adresu správného adaptéru najdeš ve Windows příkazem `ipconfig`.
 
 U LG s nainstalovaným doplňkem PlayCaption zvol **Přímý příjem LG**. Ze stejné sítě můžeš přijímač vyhledat a následně ověřit zkušebním titulkem. Pokud síť blokuje broadcast, zadej IPv4 televize ručně. Volba značky zobrazuje návod příslušné platformy. U Samsung a Sony se v tomto průvodci používá prohlížeč, pokud ho konkrétní model nabízí a podporuje potřebné webové funkce. Webová stránka sama neskládá titulky přes vstup HDMI.
+
+## Překryv dialogu, telefonu a mise
+
+1. V **Přehledu** zvol **Současně · dialogy, telefon a mise**. Oblasti se použijí při spuštění relace. Výchozí rozložení čte dialog dole, telefon na pravé straně a cíl nebo nápovědu nahoře vlevo.
+2. V sekci **Televize → Prohlížeč TV** připrav adresu a klikni na **Kopírovat pro OBS**. V OBS přidej **Zdroj prohlížeče**, vlož URL a nastav rozměry podle plátna (například 1920 × 1080). Umísti zdroj nad zdroj obrazu hry. **Zobrazit zkušební titulek** v tomto režimu ukáže všechny tři panely. Dialog je dole, překlad telefonu vlevo a cíl nahoře vpravo.
+3. Pro PS5 přidej jako obraz hry vstup z HDMI grabberu. Celoobrazovkový projektor OBS pošli z HDMI výstupu PC do televize. Před hraním změř nebo vyzkoušej zpoždění a ověř rozlišení, obnovovací frekvenci i případná omezení konkrétního grabberu.
+4. U přímého přijímače PlayCaption LG vyzkoušej zkušební titulek přímo nad otevřeným HDMI vstupem. Přímý režim přijímá dialog přes existující PCT1. Všechny tři samostatné panely poskytuje webový zdroj.
+
+Jde o OCR pevných oblastí. Umístění a přesnost je třeba ověřit v konkrétním herním menu nebo scéně. Symboly tlačítek nejsou v tomto režimu spolehlivě rozpoznávané.

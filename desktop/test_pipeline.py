@@ -12,7 +12,7 @@ from threading import Event, Thread
 
 from PIL import Image, ImageDraw, ImageFont
 
-from capture import OCR_REGIONS, child, decoder_command, process_frames, translate
+from capture import MULTI_REGION, OCR_REGIONS, PANEL_REGIONS, child, decoder_command, process_frames, translate
 from transport import PORT
 
 
@@ -74,7 +74,36 @@ def main(region):
                 worker.join()
 
 
+def test_combined():
+    english = {"dialog": "Follow me!", "phone": "Meet me here.", "mission": "Find a vehicle."}
+    translations = {"Follow me!": "Pojď za mnou!", "Meet me here.": "Sejdeme se tady.",
+                    "Find a vehicle.": "Najdi vozidlo."}
+    frame = Image.new("RGB", (1280, 720), "black")
+    painter = ImageDraw.Draw(frame)
+    font = ImageFont.load_default(size=46)
+    for key, (_, _, left, top, _) in PANEL_REGIONS.items():
+        painter.text((left + 31, top + 45), english[key], fill="white", font=font)
+    with tempfile.TemporaryDirectory() as folder:
+        image = Path(folder) / "frame.png"
+        video = Path(folder) / "combined.h264"
+        frame.save(image)
+        subprocess.run(["ffmpeg", "-v", "error", "-loop", "1", "-i", str(image), "-t", "4",
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", str(video)], check=True, timeout=15)
+        with (video.open("rb") as source,
+              socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as tv,
+              child(decoder_command("ffmpeg", MULTI_REGION), stdin=source, stdout=subprocess.PIPE) as decoder):
+            tv.bind(("127.0.0.1", PORT))
+            tv.settimeout(2)
+            updates = {}
+            process_frames(decoder, Event(), "tesseract", translations.__getitem__, "127.0.0.1", print,
+                           local_caption=updates.update, region=MULTI_REGION)
+            assert updates == {key: translations[text] for key, text in english.items()}
+            assert tv.recvfrom(8192)[0].decode().split("\t")[3] == translations[english["dialog"]]
+
+
 if __name__ == "__main__":
     for region in OCR_REGIONS:
         print(region)
         main(region)
+    print(MULTI_REGION)
+    test_combined()

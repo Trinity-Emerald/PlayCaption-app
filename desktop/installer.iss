@@ -1,5 +1,5 @@
 ﻿#define AppName "NEXCAP Desktop"
-#define AppVersion "0.4.0"
+#define AppVersion "0.5.0"
 
 [Setup]
 AppId={{A582AC7A-B67F-4B51-ACBA-210EB286CB30}

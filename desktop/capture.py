@@ -4,6 +4,7 @@
 import base64
 import binascii
 from contextlib import contextmanager
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 import ipaddress
 import json
@@ -32,6 +33,29 @@ OCR_REGIONS = {
     "Celý obraz": (1280, 720, 0, 0, 11),
 }
 DEFAULT_REGION = next(iter(OCR_REGIONS))
+
+MULTI_REGION = "Současně · dialogy, telefon a mise"
+PANEL_REGIONS = {
+    "dialog": (1280, 222, 0, 498, 6),
+    "phone": (532, 498, 748, 0, 11),
+    "mission": (748, 326, 0, 0, 11),
+}
+REGION_OPTIONS = (MULTI_REGION, *OCR_REGIONS)
+
+
+@dataclass
+class CaptionState:
+    previous: str = ""
+    source: str = ""
+    translated: str = ""
+    sent_at: float = 0.0
+    retry_at: float = 0.0
+
+
+def crop_gray(frame, width, bounds):
+    crop_width, height, left, top, _ = bounds
+    return b"".join(frame[row * width + left:row * width + left + crop_width]
+                    for row in range(top, top + height))
 
 
 def console_address(value):
@@ -90,7 +114,7 @@ def translate(url, text):
 
 
 def decoder_command(ffmpeg, region=DEFAULT_REGION):
-    width, height, left, top, _ = OCR_REGIONS[region]
+    width, height, left, top, _ = OCR_REGIONS["Celý obraz" if region == MULTI_REGION else region]
     return [ffmpeg, "-hide_banner", "-loglevel", "error", "-threads", "1",
             "-probesize", "32768", "-analyzeduration", "100000", "-f", "h264", "-i", "pipe:0",
             "-an", "-vf", f"fps=4,scale=1280:720,crop={width}:{height}:{left}:{top},format=gray",
@@ -98,7 +122,11 @@ def decoder_command(ffmpeg, region=DEFAULT_REGION):
 
 
 def recognize(tesseract, frame, region=DEFAULT_REGION):
-    width, height, _, _, psm = OCR_REGIONS[region]
+    return recognize_area(tesseract, frame, OCR_REGIONS[region])
+
+
+def recognize_area(tesseract, frame, bounds):
+    width, height, _, _, psm = bounds
     header = f"P5\n{width} {height}\n255\n".encode("ascii")
     result = sp.run([tesseract, "stdin", "stdout", "-l", "eng", "--psm", str(psm), "tsv"],
                     input=header + frame, capture_output=True, timeout=4,
@@ -151,14 +179,13 @@ def tv_addresses(value):
 def process_frames(decoder, stop, tesseract, translate_text, tv, status, *, first_only=False, failed=None, local_caption=None, region=DEFAULT_REGION):
     destinations = tv_addresses(tv) if isinstance(tv, str) else (tv or ())
     frames = Queue(maxsize=1)
-    width, height, *_ = OCR_REGIONS[region]
+    combined = region == MULTI_REGION
+    width, height, *_ = OCR_REGIONS["Celý obraz" if combined else region]
+    regions = PANEL_REGIONS if combined else {"dialog": OCR_REGIONS[region]}
+    states = {key: CaptionState() for key in regions}
     reader = Thread(target=read_frames, args=(decoder.stdout, frames, width * height), daemon=True)
     reader.start()
     last_frame = time.monotonic()
-    last_text = ""
-    czech = ""
-    last_sent = 0.0
-    previous = ""
     first_frame = True
     while not stop.is_set() and not (failed and failed.is_set()):
         try:
@@ -171,43 +198,48 @@ def process_frames(decoder, stop, tesseract, translate_text, tv, status, *, firs
             return True
         if first_frame:
             first_frame = False
-            status("Přijímám obraz PS5. Hledám anglický titulek…")
+            status("Přijímám obraz PS5. Hledám anglický text…")
         last_frame = time.monotonic()
-        text = recognize(tesseract, frame, region)
-        if len(text) < 4 or SequenceMatcher(None, text, previous).ratio() < 0.85:
-            previous = text
-            continue
-        same = SequenceMatcher(None, last_text, text).ratio() >= 0.9
-        if same and last_frame - last_sent < 3.5:
-            continue
-        if stop.is_set():
-            return
-        if not same:
-            try:
-                czech = translate_text(text)
-            except (OSError, ValueError, RuntimeError) as exc:
-                status(f"Překlad se nepodařil ({type(exc).__name__}). Zkouším znovu…")
-                if stop.wait(3):
-                    return
+        updates = {}
+        for key, bounds in regions.items():
+            if stop.is_set():
+                return
+            state = states[key]
+            pixels = crop_gray(frame, width, bounds) if combined else frame
+            text = recognize_area(tesseract, pixels, bounds)
+            stable = len(text) >= 4 and SequenceMatcher(None, text, state.previous).ratio() >= 0.85
+            state.previous = text
+            if not stable or last_frame < state.retry_at:
                 continue
-            last_text = text
-        if stop.is_set():
-            return
-        if not czech:
+            same = SequenceMatcher(None, state.source, text).ratio() >= 0.9
+            if same and last_frame - state.sent_at < 3.5:
+                continue
+            if not same:
+                try:
+                    state.translated = translate_text(text)
+                except (OSError, ValueError, RuntimeError) as exc:
+                    status(f"Překlad se nepodařil ({type(exc).__name__}). Zkouším znovu…")
+                    state.retry_at = time.monotonic() + 3
+                    continue
+                state.source = text
+            if state.translated:
+                updates[key] = state.translated
+                state.sent_at = time.monotonic()
+        if not updates or stop.is_set():
             continue
         if local_caption is not None:
-            local_caption(czech)
+            local_caption(updates if combined else updates["dialog"])
         errors = []
-        for address in destinations:
-            try:
-                send_subtitle(address, czech)
-            except OSError:
-                errors.append(address)
-        last_sent = time.monotonic()
+        if "dialog" in updates:
+            for address in destinations:
+                try:
+                    send_subtitle(address, updates["dialog"])
+                except OSError:
+                    errors.append(address)
         if errors:
             status("Přeloženo · UDP nedostupné: " + ", ".join(errors))
         else:
-            status("Český titulek odeslán přes UDP." if destinations else "Český titulek přeložen.")
+            status("Český text připraven pro náhled a připojené výstupy.")
 
 
 def test_console(address, stop, status):

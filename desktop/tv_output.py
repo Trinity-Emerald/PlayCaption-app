@@ -12,18 +12,31 @@ PAGE = rb"""<!doctype html><html lang="cs"><meta charset="utf-8">
 <title>NEXCAP | Titulky</title>
 <style>
 html,body{height:100%;margin:0;background:#0a1120;color:#fff;font-family:Segoe UI,Arial,sans-serif}
-main{position:absolute;left:6%;right:6%;bottom:12%;text-align:center}
-#caption{display:inline-block;white-space:pre-wrap;overflow-wrap:break-word;padding:.45em .8em;
-border-radius:.28em;background:#101927;font-size:5vw;max-width:90%}
-#caption:empty{display:none}
+main{position:absolute;left:8%;right:8%;bottom:6%;text-align:center}
+.panel{display:inline-block;white-space:pre-wrap;overflow-wrap:break-word;padding:.42em .7em;
+border-radius:.26em;background:rgba(10,17,32,.88);max-width:100%;max-height:30vh;overflow:hidden}
+.panel:empty{display:none}
+#caption{font-size:4vw}
+#phone,#mission{position:absolute;font-size:2.35vw;max-width:35%}
+#phone{left:4%;top:38%;border-left:.2em solid #68e6fa}
+#mission{right:4%;top:5%;border-left:.2em solid #ffcc70}
 #status{position:absolute;top:7%;left:7%;font-size:2.5vw;color:#91a5bd}
 .overlay{background:transparent}.overlay #status{display:none}
 </style>
 <div id="status">NEXCAP &middot; p&#345;ipojuji se</div>
-<main><span id="caption"></span></main>
+<main><span class="panel" id="caption"></span></main>
+<aside class="panel" id="phone"></aside><aside class="panel" id="mission"></aside>
 <script>
 (function(){
- var caption=document.getElementById('caption'), status=document.getElementById('status');
+ var status=document.getElementById('status');
+ var panels={dialog:document.getElementById('caption'),phone:document.getElementById('phone'),
+             mission:document.getElementById('mission')};
+ function render(values){
+   Object.keys(panels).forEach(function(key){
+     var text=values[key]||'';
+     if(panels[key].textContent!==text)panels[key].textContent=text;
+   });
+ }
  if(location.search==='?overlay=1'){
    document.documentElement.className='overlay';document.body.className='overlay';
  }
@@ -34,10 +47,10 @@ border-radius:.28em;background:#101927;font-size:5vw;max-width:90%}
   request.onloadend=function(){
    try{
     if(request.status!==200)throw Error();
-    var text=JSON.parse(request.responseText).text;
-    if(caption.textContent!==text)caption.textContent=text;
-    status.textContent=text?'':'NEXCAP | \u010cek\u00e1m na titulky';
-   }catch(error){caption.textContent='';status.textContent='NEXCAP | obnovuji spojen\u00ed';}
+    var data=JSON.parse(request.responseText), values=data.panels||{dialog:data.text};
+    render(values);
+    status.textContent=(values.dialog||values.phone||values.mission)?'':'NEXCAP | \u010cek\u00e1m na titulky';
+   }catch(error){render({});status.textContent='NEXCAP | obnovuji spojen\u00ed';}
    setTimeout(poll,350);
   };
   request.send();
@@ -51,19 +64,29 @@ class BrowserOutput:
     def __init__(self):
         self.server = None
         self.token = ""
-        self.text = ""
-        self.expires = 0.0
+        self.panels = {}
         self.lock = threading.Lock()
         self.last_viewer = 0.0
 
     def publish(self, text, duration=6):
         with self.lock:
-            self.text = text
-            self.expires = time.monotonic() + duration
+            self.panels = {"dialog": (text, time.monotonic() + duration)} if text else {}
+
+    def publish_panels(self, updates, duration=6):
+        with self.lock:
+            expires = time.monotonic() + duration
+            for key, text in updates.items():
+                if key in ("dialog", "phone", "mission"):
+                    self.panels[key] = (text, expires)
+
+    def current_panels(self):
+        with self.lock:
+            now = time.monotonic()
+            return {key: text for key, (text, expires) in self.panels.items()
+                    if text and now < expires}
 
     def current(self):
-        with self.lock:
-            return self.text if time.monotonic() < self.expires else ""
+        return self.current_panels().get("dialog", "")
 
     def viewer_connected(self):
         with self.lock:
@@ -91,7 +114,8 @@ class BrowserOutput:
                     with output.lock:
                         if output.token == route[1:]:
                             output.last_viewer = time.monotonic()
-                    content = json.dumps({"text": output.current()}).encode("utf-8")
+                    panels = output.current_panels()
+                    content = json.dumps({"text": panels.get("dialog", ""), "panels": panels}).encode("utf-8")
                     kind = "application/json"
                 else:
                     self.send_error(404)
